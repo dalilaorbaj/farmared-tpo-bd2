@@ -1,0 +1,11 @@
+id_proveedor,razon_social,cuit,tipo,ciudad,provincia,telefono,activo
+PRV006,Laboratorio Pampeano Farma S.A.,30-71422901-4,Laboratorio,Pilar,Buenos Aires,2304506600,True
+PRV007,Química Cuyana S.A.,30-70811234-6,Laboratorio,Mendoza,Mendoza,2614607700,True
+PRV008,Droguería del Centro S.A.,30-70655432-8,Droguería,Córdoba,Córdoba,3514708800,True
+PRV009,Laboratorios Río Paraná S.A.,30-71299876-2,Laboratorio,Santa Fe,Santa Fe,3424809900,True
+PRV010,NovaGen Argentina S.A.,30-71633410-0,Laboratorio,Buenos Aires,Buenos Aires,1143901010,True
+PRV011,Droguería Norte Grande S.R.L.,30-70544789-1,Droguería,San Miguel de Tucumán,Tucumán,3814011111,False
+PRV012,Laboratorio Hemisferio S.A.,30-71100322-5,Laboratorio,Munro,Buenos Aires,1147121212,True
+PRV013,SaludPlus Distribuciones S.A.,30-71477655-3,Droguería,Mar del Plata,Buenos Aires,2234231313,True
+PRV014,Laboratorios Del Plata S.A.,30-70922118-9,Laboratorio,Avellaneda,Buenos Aires,1142341414,True
+PRV015,Dermacor Laboratorios S.A.,30-71566003-7,Laboratorio,Córdoba,Córdoba,3514451515,True
