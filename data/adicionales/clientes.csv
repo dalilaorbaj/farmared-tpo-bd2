@@ -1,0 +1,13 @@
+id_cliente,nombre,apellido,dni,email,telefono,ciudad,provincia,obra_social,nro_afiliado,activo
+C009,Valentina,Ortiz,42118733,valen.ortiz@gmail.com,1150213344,Buenos Aires,Buenos Aires,OSDE,OS-411872,True
+C010,Tomás,Herrera,35667210,tomas.herrera@hotmail.com,2215124455,La Plata,Buenos Aires,IOMA,IO-503318,True
+C011,Agustina,Molina,41022987,agus.molina@gmail.com,3425235566,Santa Fe,Santa Fe,Swiss Medical,SM-219034,True
+C012,Ernesto,Villalba,12554320,ernesto.villalba@yahoo.com.ar,3515346677,Córdoba,Córdoba,PAMI,PA-689145,True
+C013,Camila,Sosa,43890112,cami.sosa@gmail.com,3415457788,Rosario,Santa Fe,Sin cobertura,,True
+C014,Diego,Ferreyra,30112457,dferreyra@gmail.com,1154568899,Quilmes,Buenos Aires,Galeno,GA-877120,True
+C015,Rocío,Medina,38774521,rocio.medina@gmail.com,3541679900,Villa Carlos Paz,Córdoba,OSDE,OS-398811,True
+C016,Gustavo,Ibarra,22345098,gibarra@hotmail.com,1156781122,Buenos Aires,Buenos Aires,PAMI,PA-640277,False
+C017,Florencia,Luna,44501236,flor.luna@gmail.com,1157892233,Buenos Aires,Buenos Aires,Swiss Medical,SM-230457,True
+C018,Nicolás,Aguirre,36998740,nico.aguirre@gmail.com,3415903344,Rosario,Santa Fe,Sin cobertura,,True
+C019,Paula,Correa,40566781,paula.correa@gmail.com,3516014455,Córdoba,Córdoba,Galeno,GA-912006,True
+C020,Alberto,Rossi,16443209,alberto.rossi@yahoo.com.ar,1147125566,San Isidro,Buenos Aires,PAMI,PA-655430,True
