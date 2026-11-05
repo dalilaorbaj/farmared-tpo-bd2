@@ -18,12 +18,14 @@ from farmared.consultas import (
     q01_productos_activos,
     q02_ventas_pendientes,
     q08_lotes_stock_bajo,
+    q09_ventas_libres_menores,
 )
 
 CONSULTAS = {
     "q01": (q01_productos_activos.ejecutar, "Productos activos con datos del proveedor"),
     "q02": (q02_ventas_pendientes.ejecutar, "Ventas pendientes con farmacéutico y total"),
     "q08": (q08_lotes_stock_bajo.ejecutar, "Lotes con menos de 50 unidades  [limite]"),
+    "q09": (q09_ventas_libres_menores.ejecutar, "Ventas libres con total < $5000  [monto_max]"),
 }
 
 
