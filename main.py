@@ -17,11 +17,13 @@ from farmared import carga
 from farmared.consultas import (
     q01_productos_activos,
     q02_ventas_pendientes,
+    q08_lotes_stock_bajo,
 )
 
 CONSULTAS = {
     "q01": (q01_productos_activos.ejecutar, "Productos activos con datos del proveedor"),
     "q02": (q02_ventas_pendientes.ejecutar, "Ventas pendientes con farmacéutico y total"),
+    "q08": (q08_lotes_stock_bajo.ejecutar, "Lotes con menos de 50 unidades  [limite]"),
 }
 
 
