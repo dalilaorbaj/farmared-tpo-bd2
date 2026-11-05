@@ -7,6 +7,7 @@ Sistema de backoffice para una red de farmacias con persistencia políglota (Mon
 - Florencia Cecotto
 - Facundo Ignacio Krens Licitra
 - Dalila Orbaj
+- Tiago Heras
 
 ## Motores
 
