@@ -4,9 +4,9 @@ Sistema de backoffice para una red de farmacias con persistencia políglota (Mon
 2do cuatrimestre 2026.
 
 **Integrantes**
+- Florencia Cecotto
+- Facundo Ignacio Krens Licitra
 - Dalila Orbaj
-- _completar_
-- _completar_
 
 ## Motores
 
