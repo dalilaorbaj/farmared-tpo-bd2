@@ -5,7 +5,7 @@
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "shutdownAction": "stopCompose",
   "forwardPorts": [27017, 6379],
-  "postCreateCommand": "pip install --user -r requirements.txt",
+  "postCreateCommand": "pip install --user -r requirements.txt && python -m farmared.carga",
   "customizations": {
     "vscode": {
       "extensions": [
