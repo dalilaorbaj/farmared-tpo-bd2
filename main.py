@@ -16,10 +16,12 @@ from datetime import datetime
 from farmared import carga
 from farmared.consultas import (
     q01_productos_activos,
+    q02_ventas_pendientes,
 )
 
 CONSULTAS = {
     "q01": (q01_productos_activos.ejecutar, "Productos activos con datos del proveedor"),
+    "q02": (q02_ventas_pendientes.ejecutar, "Ventas pendientes con farmacéutico y total"),
 }
 
 
