@@ -4,20 +4,23 @@ Carga inicial de datos.
 Uso:  python -m farmared.carga
 
 Lee los CSV de data/originales (los de la cátedra) y data/adicionales (los
-nuestros), convierte los tipos y carga:
+nuestros), convierte los tipos, valida las referencias entre entidades y carga:
 
   - MongoDB: clientes, sucursales, farmaceuticos, proveedores, productos,
     recetas y ventas (con el detalle embebido en "items").
   - Redis: stock por lote (ver cargar_stock_redis).
 
-Antes de cargar borra lo que había, así que se puede correr varias veces.
+Es idempotente: antes de cargar borra las colecciones y las claves de stock,
+así que correrlo N veces deja siempre el mismo estado.
 """
 import csv
+import sys
 from collections import defaultdict
 from pathlib import Path
 
 from farmared import fechas
 from farmared.db import get_db, get_redis
+from farmared.esquema_mongo import crear_colecciones
 
 DIR_DATA = Path(__file__).resolve().parent.parent / "data"
 CARPETAS = ["originales", "adicionales"]
@@ -41,6 +44,20 @@ ID = {
     "ventas": "id_venta",
     "detalle_ventas": "id_detalle",
 }
+
+# (archivo, campo) -> archivo referenciado. Sale de la tabla 2.10 del enunciado
+REFERENCIAS = [
+    ("farmaceuticos", "id_sucursal", "sucursales"),
+    ("productos", "id_proveedor", "proveedores"),
+    ("stock_lotes", "id_producto", "productos"),
+    ("stock_lotes", "id_sucursal", "sucursales"),
+    ("recetas", "id_cliente", "clientes"),
+    ("ventas", "id_cliente", "clientes"),
+    ("ventas", "id_farmaceutico", "farmaceuticos"),
+    ("ventas", "id_receta", "recetas"),
+    ("detalle_ventas", "id_venta", "ventas"),
+    ("detalle_ventas", "id_producto", "productos"),
+]
 
 
 def convertir(campo, valor):
@@ -68,6 +85,36 @@ def leer_csv(nombre):
     return filas
 
 
+def validar(datos):
+    """Chequea ids repetidos, referencias rotas y que el total de cada venta
+    coincida con la suma de sus ítems. Devuelve la lista de errores."""
+    errores = []
+    ids = {}
+    for nombre in ARCHIVOS:
+        vistos = set()
+        for fila in datos[nombre]:
+            i = fila[ID[nombre]]
+            if i in vistos:
+                errores.append(f"{nombre}: id repetido {i}")
+            vistos.add(i)
+        ids[nombre] = vistos
+
+    for origen, campo, destino in REFERENCIAS:
+        for fila in datos[origen]:
+            valor = fila.get(campo)
+            if valor is not None and valor not in ids[destino]:
+                errores.append(f"{origen} {fila[ID[origen]]}: {campo}={valor} no existe en {destino}")
+
+    suma = defaultdict(int)
+    for d in datos["detalle_ventas"]:
+        suma[d["id_venta"]] += d["cantidad"] * d["precio_unit"]
+    for v in datos["ventas"]:
+        if suma[v["id_venta"]] != v["total"]:
+            errores.append(f"ventas {v['id_venta']}: total {v['total']} != suma de items {suma[v['id_venta']]}")
+
+    return errores
+
+
 def a_documento(fila, campo_id):
     doc = dict(fila)
     doc["_id"] = doc.pop(campo_id)
@@ -75,8 +122,9 @@ def a_documento(fila, campo_id):
 
 
 def cargar_mongo(db, datos):
+    crear_colecciones(db)
+
     for nombre in ["clientes", "sucursales", "farmaceuticos", "proveedores", "productos", "recetas"]:
-        db.drop_collection(nombre)
         docs = [a_documento(f, ID[nombre]) for f in datos[nombre]]
         db[nombre].insert_many(docs)
         print(f"  mongo  {nombre:<15} {len(docs):>3} docs")
@@ -96,7 +144,6 @@ def cargar_mongo(db, datos):
         doc = a_documento(v, "id_venta")
         doc["items"] = items[doc["_id"]]
         ventas.append(doc)
-    db.drop_collection("ventas")
     db.ventas.insert_many(ventas)
     print(f"  mongo  {'ventas':<15} {len(ventas):>3} docs ({len(datos['detalle_ventas'])} items embebidos)")
 
@@ -141,11 +188,21 @@ def cargar_stock_redis(r, lotes):
 def main():
     datos = {nombre: leer_csv(nombre) for nombre in ARCHIVOS}
 
+    errores = validar(datos)
+    if errores:
+        print("Hay errores en los datos, no se carga nada:")
+        for e in errores:
+            print("  -", e)
+        sys.exit(1)
+
     print("Cargando MongoDB...")
     cargar_mongo(get_db(), datos)
 
     print("Cargando Redis...")
-    cargar_stock_redis(get_redis(), datos["stock_lotes"])
+    r = get_redis()
+    cargar_stock_redis(r, datos["stock_lotes"])
+    # cualquier cache que haya quedado de antes ya no sirve
+    borrar_claves(r, "cache:*")
 
     print("Listo.")
 
