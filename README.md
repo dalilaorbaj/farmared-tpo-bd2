@@ -85,6 +85,7 @@ python main.py q08 30     # argumentos opcionales
 |---|---|---|---|
 | 1 | `python main.py q01` | Productos activos con datos del proveedor | Mongo + cache Redis |
 | 2 | `python main.py q02` | Ventas pendientes con farmacéutico y total | Mongo |
+| 4 | `python main.py q04` | Clientes con más de una receta | Mongo |
 | 8 | `python main.py q08 [limite]` | Lotes con menos de 50 unidades | Redis + Mongo |
 | 9 | `python main.py q09 [monto_max]` | Ventas libres con total < $5000 | Mongo |
 
