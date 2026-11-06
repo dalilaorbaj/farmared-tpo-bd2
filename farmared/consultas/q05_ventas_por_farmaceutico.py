@@ -9,6 +9,7 @@ una lista vacía y cuentan 0. Las ventas de cada uno se buscan con el índice
 
 Criterio: el enunciado solo excluye las ventas 'Anulada', así que las
 'Pendiente' cuentan. La ventana incluye el día de hoy - dias.
+Si no se encuentra la sucursal, el farmacéutico aparece igual, sin ese nombre.
 
 Parámetros:
     dias (int): tamaño de la ventana en días, por defecto 60. Depende de la
@@ -40,14 +41,14 @@ def ejecutar(dias=60):
             ],
             "as": "ventas",
         }},
-        # trae el nombre de la sucursal
+        # trae el nombre de la sucursal (si no existe, el farmacéutico aparece igual)
         {"$lookup": {
             "from": "sucursales",
             "localField": "id_sucursal",
             "foreignField": "_id",
             "as": "suc",
         }},
-        {"$unwind": "$suc"},
+        {"$unwind": {"path": "$suc", "preserveNullAndEmptyArrays": True}},
         # cuenta las ventas y deja solo los campos del reporte
         {"$project": {
             "_id": 0,
