@@ -17,6 +17,7 @@ from farmared import carga
 from farmared.consultas import (
     q01_productos_activos,
     q02_ventas_pendientes,
+    q03_historial_cliente,
     q04_clientes_varias_recetas,
     q05_ventas_por_farmaceutico,
     q06_tratamientos_atrasados,
@@ -27,6 +28,7 @@ from farmared.consultas import (
 CONSULTAS = {
     "q01": (q01_productos_activos.ejecutar, "Productos activos con datos del proveedor"),
     "q02": (q02_ventas_pendientes.ejecutar, "Ventas pendientes con farmacéutico y total"),
+    "q03": (q03_historial_cliente.ejecutar, "Historial completo de un cliente  <id_cliente>"),
     "q04": (q04_clientes_varias_recetas.ejecutar, "Clientes con más de una receta"),
     "q05": (q05_ventas_por_farmaceutico.ejecutar, "Farmacéuticos activos y sus ventas en los últimos 60 días  [dias]"),
     "q06": (q06_tratamientos_atrasados.ejecutar, "Tratamientos prolongados vigentes con dispensa atrasada"),
