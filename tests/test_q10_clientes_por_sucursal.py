@@ -6,9 +6,11 @@ consulta y verifica quién aparece. Mongo está reemplazado por una base en
 memoria; el pipeline es el que corre.
 """
 from contextlib import contextmanager
+from datetime import datetime
 from unittest.mock import patch
 
 import mongomock
+import pytest
 
 from farmared.consultas import q10_clientes_por_sucursal as q10
 
@@ -38,13 +40,16 @@ def cliente(id_cliente, nombre, apellido, dni, activo=True):
     }
 
 
-def venta(id_venta, id_cliente, id_farmaceutico, estado="Completada"):
-    return {
+def venta(id_venta, id_cliente, id_farmaceutico, estado="Completada", fecha=None):
+    doc = {
         "_id": id_venta,
         "id_cliente": id_cliente,
         "id_farmaceutico": id_farmaceutico,
         "estado": estado,
     }
+    if fecha is not None:
+        doc["fecha"] = datetime.strptime(fecha, "%Y-%m-%d")
+    return doc
 
 
 def fila(id_cliente, nombre, apellido, dni, activo=True):
@@ -57,6 +62,16 @@ def fila(id_cliente, nombre, apellido, dni, activo=True):
     }
 
 
+def atencion(id_venta, id_cliente, nombre, apellido, dni, fecha, estado, id_farmaceutico, activo=True):
+    return {
+        **fila(id_cliente, nombre, apellido, dni, activo),
+        "id_venta": id_venta,
+        "fecha": datetime.strptime(fecha, "%Y-%m-%d"),
+        "estado": estado,
+        "id_farmaceutico": id_farmaceutico,
+    }
+
+
 def test_sin_id_devuelve_error_y_no_consulta():
     # Arrange
     
@@ -65,7 +80,7 @@ def test_sin_id_devuelve_error_y_no_consulta():
 
     # Assert
     assert resultado == {
-        "error": "Falta el id de la sucursal. Uso: python main.py q10 <id_sucursal>",
+        "error": "Falta el id de la sucursal. Uso: python main.py q10 <id_sucursal> [contar_repetidos]",
     }
 
 
@@ -192,6 +207,68 @@ def test_sucursal_sin_ventas_devuelve_lista_vacia():
         "sucursal": {"id_sucursal": "S005", "nombre": "Droguería Central", "activo": True},
         "clientes": [],
     }
+
+
+def test_contar_repetidos_repite_una_fila_por_venta():
+    # Arrange
+    with mongo_en_memoria() as db:
+        db.sucursales.insert_one(sucursal("S001", "Farmacia Palermo"))
+        db.farmaceuticos.insert_many([
+            farmaceutico("F001", "S001"),
+            farmaceutico("F002", "S001"),
+            farmaceutico("F003", "S002"),
+        ])
+        db.clientes.insert_many([
+            cliente("C001", "Lucía", "Fernández", "31245678"),
+            cliente("C006", "Ricardo", "Paz", "14876543"),
+        ])
+        db.ventas.insert_many([
+            venta("V016", "C001", "F002", fecha="2026-10-07"),
+            venta("V003", "C001", "F001", fecha="2026-09-10"),
+            venta("V013", "C001", "F001", fecha="2026-10-02"),
+            venta("V006", "C006", "F002", fecha="2026-08-01"),
+            venta("V010", "C002", "F003", fecha="2026-10-08"),
+        ])
+
+        # Act
+        resultado = q10.ejecutar("S001", "true")
+
+    # Assert
+    assert resultado["clientes"] == [
+        atencion("V003", "C001", "Lucía", "Fernández", "31245678", "2026-09-10", "Completada", "F001"),
+        atencion("V013", "C001", "Lucía", "Fernández", "31245678", "2026-10-02", "Completada", "F001"),
+        atencion("V016", "C001", "Lucía", "Fernández", "31245678", "2026-10-07", "Completada", "F002"),
+        atencion("V006", "C006", "Ricardo", "Paz", "14876543", "2026-08-01", "Completada", "F002"),
+    ]
+
+
+def test_contar_repetidos_en_false_sigue_siendo_un_cliente():
+    # Arrange
+    with mongo_en_memoria() as db:
+        db.sucursales.insert_one(sucursal("S001", "Farmacia Palermo"))
+        db.farmaceuticos.insert_one(farmaceutico("F001", "S001"))
+        db.clientes.insert_one(cliente("C001", "Lucía", "Fernández", "31245678"))
+        db.ventas.insert_many([
+            venta("V003", "C001", "F001", fecha="2026-09-10"),
+            venta("V013", "C001", "F001", fecha="2026-10-02"),
+        ])
+
+        # Act
+        resultado = q10.ejecutar("S001", "false")
+
+    # Assert
+    assert resultado["clientes"] == [
+        fila("C001", "Lucía", "Fernández", "31245678"),
+    ]
+
+
+def test_contar_repetidos_rechaza_un_valor_desconocido():
+    # Arrange
+    argumento = "varias"
+
+    # Act
+    with pytest.raises(ValueError, match="contar_repetidos"):
+        q10.ejecutar("S001", argumento)
 
 
 def test_sin_ficha_de_cliente_aparece_con_datos_nulos():
