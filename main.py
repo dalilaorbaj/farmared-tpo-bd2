@@ -21,6 +21,7 @@ from farmared.consultas import (
     q04_clientes_varias_recetas,
     q05_ventas_por_farmaceutico,
     q06_tratamientos_atrasados,
+    q07_productos_mas_vendidos,
     q08_lotes_stock_bajo,
     q09_ventas_libres_menores,
 )
@@ -32,6 +33,7 @@ CONSULTAS = {
     "q04": (q04_clientes_varias_recetas.ejecutar, "Clientes con más de una receta"),
     "q05": (q05_ventas_por_farmaceutico.ejecutar, "Farmacéuticos activos y sus ventas en los últimos 60 días  [dias]"),
     "q06": (q06_tratamientos_atrasados.ejecutar, "Tratamientos prolongados vigentes con dispensa atrasada"),
+    "q07": (q07_productos_mas_vendidos.ejecutar, "Top 5 productos más vendidos por unidades  [solo_activos]"),
     "q08": (q08_lotes_stock_bajo.ejecutar, "Lotes con menos de 50 unidades  [limite]"),
     "q09": (q09_ventas_libres_menores.ejecutar, "Ventas libres con total < $5000  [monto_max]"),
 }

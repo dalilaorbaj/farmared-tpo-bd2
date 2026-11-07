@@ -89,6 +89,7 @@ python main.py q08 30     # argumentos opcionales
 | 4 | `python main.py q04` | Clientes con más de una receta | Mongo |
 | 5 | `python main.py q05 [dias]` | Farmacéuticos activos y sus ventas en los últimos 60 días | Mongo |
 | 6 | `python main.py q06` | Tratamientos prolongados vigentes con dispensa atrasada | Mongo |
+| 7 | `python main.py q07 [solo_activos]` | Top 5 productos más vendidos por unidades | Mongo |
 | 8 | `python main.py q08 [limite]` | Lotes con menos de 50 unidades | Redis + Mongo |
 | 9 | `python main.py q09 [monto_max]` | Ventas libres con total < $5000 | Mongo |
 
