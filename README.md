@@ -94,6 +94,7 @@ python main.py q08 30     # argumentos opcionales
 | 9 | `python main.py q09 [monto_max]` | Ventas libres con total < $5000 | Mongo |
 | 10 | `python main.py q10 <id_sucursal> [contar_repetidos]` | Clientes atendidos en una sucursal | Mongo |
 | 11 | `python main.py q11` | Ingresos por farmacéutico en el mes actual | Mongo |
+| 12 | `python main.py q12 [considerar_anuladas]` | Clientes sin ventas en el último año | Mongo |
 
 Cada consulta está en su propio módulo en `farmared/consultas/qXX_*.py`, con un docstring que explica qué hace, parámetros, qué devuelve y qué motor usa.
 

@@ -26,6 +26,7 @@ from farmared.consultas import (
     q09_ventas_libres_menores,
     q10_clientes_por_sucursal,
     q11_ingresos_por_farmaceutico,
+    q12_clientes_sin_ventas,
 )
 
 CONSULTAS = {
@@ -40,6 +41,7 @@ CONSULTAS = {
     "q09": (q09_ventas_libres_menores.ejecutar, "Ventas libres con total < $5000  [monto_max]"),
     "q10": (q10_clientes_por_sucursal.ejecutar, "Clientes atendidos en una sucursal  <id_sucursal> [contar_repetidos]"),
     "q11": (q11_ingresos_por_farmaceutico.ejecutar, "Ingresos por farmacéutico en el mes actual"),
+    "q12": (q12_clientes_sin_ventas.ejecutar, "Clientes sin ventas en el último año  [considerar_anuladas]"),
 }
 
 
