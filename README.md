@@ -98,6 +98,21 @@ python main.py q08 30     # argumentos opcionales
 
 Cada consulta está en su propio módulo en `farmared/consultas/qXX_*.py`, con un docstring que explica qué hace, parámetros, qué devuelve y qué motor usa.
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+La mayoría corre en memoria y no necesita Mongo ni Redis instalados. q03 y q05 sí corren sobre un Mongo real, porque usan `$unionWith` y un `$lookup` con subpipeline. Para eso el test busca un servidor en este orden:
+
+1. `MONGO_URI`, si está definida (en el Codespace ya apunta al Mongo del compose).
+2. `localhost:27017`.
+3. Si no hay ninguno, levanta uno para la corrida: el binario `mongod`, o un contenedor `mongo:7`.
+
+Usa una base aparte, `farmared_test`, y la borra al terminar cada test. Las otras bases del servidor no se tocan. Si el Mongo lo arrancó la corrida, también lo apaga al final.
+
 ## Estructura del repo
 
 ```
@@ -112,6 +127,7 @@ farmared/
   carga.py            script de carga
   consultas/          una consulta/servicio por archivo (q01 ... q15)
 main.py               CLI para correr las consultas
+tests/                tests en memoria y, en integracion/, q03 y q05 contra Mongo
 ```
 
 ## Notas
