@@ -25,6 +25,7 @@ from farmared.consultas import (
     q08_lotes_stock_bajo,
     q09_ventas_libres_menores,
     q10_clientes_por_sucursal,
+    q11_ingresos_por_farmaceutico,
 )
 
 CONSULTAS = {
@@ -38,6 +39,7 @@ CONSULTAS = {
     "q08": (q08_lotes_stock_bajo.ejecutar, "Lotes con menos de 50 unidades  [limite]"),
     "q09": (q09_ventas_libres_menores.ejecutar, "Ventas libres con total < $5000  [monto_max]"),
     "q10": (q10_clientes_por_sucursal.ejecutar, "Clientes atendidos en una sucursal  <id_sucursal>"),
+    "q11": (q11_ingresos_por_farmaceutico.ejecutar, "Ingresos por farmacéutico en el mes actual"),
 }
 
 
