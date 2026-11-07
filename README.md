@@ -105,6 +105,8 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
+GitHub Actions corre esa misma suite en cada push y cada pull request. El workflow levanta un Mongo 7 y lo pasa por `MONGO_URI`, así q03 y q05 también corren ahí.
+
 La mayoría corre en memoria y no necesita Mongo ni Redis instalados. q03 y q05 sí corren sobre un Mongo real, porque usan `$unionWith` y un `$lookup` con subpipeline. Para eso el test busca un servidor en este orden:
 
 1. `MONGO_URI`, si está definida (en el Codespace ya apunta al Mongo del compose).
@@ -117,6 +119,7 @@ Usa una base aparte, `farmared_test`, y la borra al terminar cada test. Las otra
 
 ```
 .devcontainer/        devcontainer + docker-compose (app, mongo, redis)
+.github/workflows/    tests en cada push y pull request
 data/originales/      CSV de la cátedra
 data/adicionales/     nuestros registros
 farmared/
