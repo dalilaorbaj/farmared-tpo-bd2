@@ -28,6 +28,8 @@ from farmared.consultas import (
     q11_ingresos_por_farmaceutico,
     q12_clientes_sin_ventas,
     q13_abm_clientes,
+    q14_registrar_venta,
+    q15_descontar_stock,
 )
 
 CONSULTAS = {
@@ -44,6 +46,8 @@ CONSULTAS = {
     "q11": (q11_ingresos_por_farmaceutico.ejecutar, "Ingresos por farmacéutico en el mes actual"),
     "q12": (q12_clientes_sin_ventas.ejecutar, "Clientes sin ventas en el último año  [considerar_anuladas]"),
     "q13": (q13_abm_clientes.ejecutar, "ABM de clientes  alta <json> | modificar <id_cliente> <json> | baja <id_cliente>"),
+    "q14": (q14_registrar_venta.ejecutar, "Registrar venta Completada (valida, descuenta stock)  '<json>'"),
+    "q15": (q15_descontar_stock.ejecutar, "Descontar stock FEFO de una venta  <id_venta>"),
 }
 
 

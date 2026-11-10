@@ -96,6 +96,8 @@ python main.py q08 30     # argumentos opcionales
 | 11 | `python main.py q11` | Ingresos por farmacéutico en el mes actual | Mongo |
 | 12 | `python main.py q12 [considerar_anuladas]` | Clientes sin ventas en el último año | Mongo |
 | 13 | `python main.py q13 alta '<json>'`<br>`python main.py q13 modificar <id_cliente> '<json>'`<br>`python main.py q13 baja <id_cliente>` | ABM de clientes (alta validada, modificación de contacto y cobertura, baja lógica) | Mongo |
+| 14 | `python main.py q14 '<json>'` | Registrar venta Completada con validaciones, receta y stock | Mongo (transacción) + Redis |
+| 15 | `python main.py q15 <id_venta>` | Descontar stock de una venta (FEFO, todo o nada) | Redis (Lua) + Mongo |
 
 Cada consulta está en su propio módulo en `farmared/consultas/qXX_*.py`, con un docstring que explica qué hace, parámetros, qué devuelve y qué motor usa.
 
