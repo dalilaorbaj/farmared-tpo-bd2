@@ -10,19 +10,8 @@ import pytest
 pytestmark = pytest.mark.skip(reason="TODO: q15 sin implementar")
 
 
-def test_descuenta_en_orden_fefo_y_saltea_vencidos():
-    # TODO: PRD002 x10 en S001 -> L020 (vencido) no se toca; L019 (8) y L004 (2).
-    ...
-
-
-def test_stock_insuficiente_rechaza_sin_tocar_ningun_lote():
-    # TODO: PRD002 x120 en S001 (hay 98 vigentes) -> excepción y lotes intactos.
-    ...
-
-
-def test_un_item_sin_stock_no_descuenta_los_demas():
-    # TODO: venta de dos ítems, el segundo no alcanza -> el primero tampoco se descuenta.
-    ...
+# FEFO, vencidos, stock insuficiente y todo-o-nada ya están probados contra Redis real
+# en tests/integracion/test_q15_redis.py. Acá van los que necesitan la venta en Mongo.
 
 
 def test_no_descuenta_dos_veces_la_misma_venta():

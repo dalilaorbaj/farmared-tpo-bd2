@@ -12,24 +12,81 @@ Parámetros:
     session: sesión de Mongo si se llama desde la transacción de q14 (opcional).
 Retorna: TODO definir (ej. dict con lo descontado de cada lote, para poder
          compensar en q14 si el commit falla).
-Errores: TODO definir las excepciones (venta inexistente, no Completada, ya
+Errores: StockInsuficiente (hecha). TODO definir el resto (venta inexistente, no Completada, ya
          descontada, stock insuficiente).
 """
+import json
+
 from farmared import fechas
 from farmared.db import get_db, get_redis
 
-# TODO [MIÉ 11 · Lua] 1 (Lua): escribir el script. Lo que tiene que hacer, en este orden:
-#   a) para cada ítem, recorrer el ZSET stock:{suc}:{prod} desde el score de hoy
-#      (así se saltean los vencidos) y sumar lo disponible, en orden FEFO;
-#   b) si ALGÚN ítem no alcanza -> devolver un error/código SIN haber escrito nada;
-#   c) si todo alcanza -> recién ahí descontar: HINCRBY lote:{id} unidades -n
-#      y ZADD lotes:unidades con las unidades nuevas (¡las dos cosas!);
-#   d) devolver qué se descontó de cada lote (lo necesita la compensación).
-# Pistas: los argumentos llegan como string (tonumber); redis.call; ver README
-# sección "Estructura en Redis". Guía: docs/consigna/guia-tiago-q14-q15.md §1.3
+class StockInsuficiente(Exception):
+    """Algún ítem no alcanza con el stock vigente. No se tocó ningún lote."""
+
+
+# Script Lua: Redis lo ejecuta entero de forma atómica (nadie se cuela en el
+# medio). Dos fases:
+#   1) PLANIFICAR: recorre cada ZSET stock:{suc}:{prod} desde el score de hoy
+#      (los vencidos quedan afuera) en orden FEFO y arma qué sacar de cada lote.
+#      Si algún producto no alcanza, devuelve el faltante SIN haber escrito nada.
+#   2) APLICAR: recién si todo alcanza, descuenta (HINCRBY en el HASH del lote
+#      y ZADD en lotes:unidades, siempre las dos cosas).
+# Redis no hace rollback de un script que falla a mitad de camino, por eso la
+# fase de escritura va después de verificar todo.
+#
+# KEYS[i]    = stock:{suc}:{prod}  (un producto por clave, SIN repetidos: si
+#              llegara la misma clave dos veces, se planificaría dos veces el
+#              mismo lote; por eso ejecutar() agrupa los ítems por producto)
+# ARGV[1]    = score de hoy (AAAAMMDD); ARGV[i+1] = cantidad pedida de KEYS[i]
+# Devuelve un JSON: {"ok": false, "clave": ..., "faltan": n}
+#               o   {"ok": true, "descontado": [{"lote": ..., "unidades": n}, ...]}
+# (el descontado sirve para compensar en q14 si falla el commit).
 SCRIPT_DESCONTAR = """
--- TODO
+local hoy = ARGV[1]
+local plan = {}
+
+for i, clave in ipairs(KEYS) do
+  local necesario = tonumber(ARGV[i + 1])
+  local lotes = redis.call('ZRANGEBYSCORE', clave, hoy, '+inf')
+  for _, id_lote in ipairs(lotes) do
+    if necesario <= 0 then break end
+    local disponibles = tonumber(redis.call('HGET', 'lote:' .. id_lote, 'unidades')) or 0
+    local tomar = math.min(disponibles, necesario)
+    if tomar > 0 then
+      plan[#plan + 1] = {lote = id_lote, unidades = tomar}
+      necesario = necesario - tomar
+    end
+  end
+  if necesario > 0 then
+    return cjson.encode({ok = false, clave = clave, faltan = necesario})
+  end
+end
+
+for _, p in ipairs(plan) do
+  local nuevas = redis.call('HINCRBY', 'lote:' .. p.lote, 'unidades', -p.unidades)
+  redis.call('ZADD', 'lotes:unidades', nuevas, p.lote)
+end
+return cjson.encode({ok = true, descontado = plan})
 """
+
+
+def descontar_lotes(r, id_sucursal, items):
+    """Ejecuta el script. items: lista de {"id_producto", "cantidad"}.
+    Devuelve [{"lote", "unidades"}, ...] o lanza StockInsuficiente."""
+    # el mismo producto en dos ítems se suma: el script necesita una clave por producto
+    por_producto = {}
+    for it in items:
+        por_producto[it["id_producto"]] = por_producto.get(it["id_producto"], 0) + int(it["cantidad"])
+
+    keys = [f"stock:{id_sucursal}:{prod}" for prod in por_producto]
+    args = [fechas.a_score(fechas.hoy())] + list(por_producto.values())
+
+    script = r.register_script(SCRIPT_DESCONTAR)
+    respuesta = json.loads(script(keys=keys, args=args))
+    if not respuesta["ok"]:
+        raise StockInsuficiente(
+            f"Stock insuficiente en {respuesta['clave']}: faltan {respuesta['faltan']} unidades vigentes")
+    return respuesta["descontado"]
 
 
 def _leer_venta_y_sucursal(id_venta, session=None):
@@ -47,12 +104,8 @@ def ejecutar(id_venta, session=None):
 
     # TODO [JUE 12 · wrapper] 3: llamar a _leer_venta_y_sucursal.
 
-    # TODO [JUE 12 · wrapper] 4: armar keys/args para el script a partir de los ítems.
-    # Ojo: ¿qué pasa si el mismo producto aparece en dos ítems?
-    hoy_score = fechas.a_score(fechas.hoy())  # noqa: F841 (lo usa el script)
-
-    # TODO [JUE 12 · wrapper] 5: registrar y ejecutar el script (r.register_script) y traducir
-    # su respuesta: stock insuficiente -> excepción clara.
+    # TODO [JUE 12 · wrapper] 4-5: llamar a descontar_lotes(r, id_sucursal, venta["items"])
+    # (ya hecho el miércoles: agrupa por producto, corre el Lua y lanza StockInsuficiente).
 
     # TODO [JUE 12 · flag] 6: marcar stock_descontado = True en la venta (¿con session?).
     # Decidir quién lo marca: q15 o q14.
