@@ -25,25 +25,90 @@ import json
 from farmared import fechas
 from farmared.consultas import q15_descontar_stock
 from farmared.db import get_db, get_mongo_client, get_redis
+from farmared.esquema_mongo import VALIDADORES
 
 
 class VentaRechazada(Exception):
     """Motivo de rechazo por validación o por falta de stock."""
 
 
+MEDIOS_PAGO = VALIDADORES["ventas"]["$jsonSchema"]["properties"]["medio_pago"]["enum"]
+BAJO_RECETA = ("Bajo receta", "Bajo receta archivada")
+
+
+def _validar_estructura(datos):
+    """Chequea la forma de la entrada (sin consultar la base)."""
+    if not isinstance(datos, dict):
+        raise VentaRechazada("Los datos de la venta tienen que ser un objeto JSON")
+    for campo in ("id_cliente", "id_farmaceutico", "medio_pago", "items"):
+        if not datos.get(campo):
+            raise VentaRechazada(f"Falta el campo obligatorio '{campo}'")
+    if datos["medio_pago"] not in MEDIOS_PAGO:
+        raise VentaRechazada(f"Medio de pago inválido: {datos['medio_pago']} (válidos: {', '.join(MEDIOS_PAGO)})")
+    if not isinstance(datos["items"], list):
+        raise VentaRechazada("'items' tiene que ser una lista")
+    for it in datos["items"]:
+        if not isinstance(it, dict) or not it.get("id_producto"):
+            raise VentaRechazada("Cada ítem necesita 'id_producto'")
+        cant = it.get("cantidad")
+        if isinstance(cant, bool) or not isinstance(cant, int) or cant <= 0:
+            raise VentaRechazada(f"Cantidad inválida para {it['id_producto']}: tiene que ser un entero mayor a 0")
+
+
 def _validar(datos):
     """Fase 1: SOLO lecturas. Si algo falla -> raise VentaRechazada(motivo).
-    Si todo pasa devuelve lo que se necesita después (receta, productos...)."""
+    Si todo pasa devuelve lo que se necesita después:
+    {"cliente", "farmaceutico", "sucursal", "productos": {id: doc}, "receta": doc | None}"""
     db = get_db()
-    # TODO [JUE 12 · validaciones] 1: validar la estructura de la entrada (items no vacíos, cantidad > 0,
-    #         medio_pago permitido; ver enums en farmared/esquema_mongo.py).
-    # TODO [JUE 12 · validaciones] 2: cliente existe y activo.
-    # TODO [JUE 12 · validaciones] 3: farmacéutico existe y activo; su sucursal existe, activa y tipo 'Farmacia'.
-    # TODO [JUE 12 · validaciones] 4: productos existen y activos (¿y si un producto está repetido?).
-    # TODO [JUE 12 · validaciones] 5: si algún producto es 'Bajo receta' / 'Bajo receta archivada':
-    #         receta existente, estado 'Vigente' y del mismo cliente.
-    #         ¿Y si mandan receta pero ningún producto la necesita?
-    raise NotImplementedError
+    _validar_estructura(datos)
+
+    cliente = db.clientes.find_one({"_id": datos["id_cliente"]})
+    if cliente is None:
+        raise VentaRechazada(f"El cliente {datos['id_cliente']} no existe")
+    if not cliente["activo"]:
+        raise VentaRechazada(f"El cliente {datos['id_cliente']} está dado de baja")
+
+    farmaceutico = db.farmaceuticos.find_one({"_id": datos["id_farmaceutico"]})
+    if farmaceutico is None:
+        raise VentaRechazada(f"El farmacéutico {datos['id_farmaceutico']} no existe")
+    if not farmaceutico["activo"]:
+        raise VentaRechazada(f"El farmacéutico {datos['id_farmaceutico']} no está activo")
+    sucursal = db.sucursales.find_one({"_id": farmaceutico["id_sucursal"]})
+    if sucursal is None:
+        raise VentaRechazada(f"La sucursal {farmaceutico['id_sucursal']} del farmacéutico no existe")
+    if sucursal["tipo"] != "Farmacia":
+        raise VentaRechazada(f"La sucursal {sucursal['_id']} es una {sucursal['tipo']}: no registra ventas minoristas")
+    if not sucursal["activo"]:
+        raise VentaRechazada(f"La sucursal {sucursal['_id']} está dada de baja")
+
+    # un producto repetido en dos ítems es válido (q15 suma las cantidades)
+    ids = {it["id_producto"] for it in datos["items"]}
+    productos = {p["_id"]: p for p in db.productos.find({"_id": {"$in": list(ids)}})}
+    for id_producto in sorted(ids):
+        if id_producto not in productos:
+            raise VentaRechazada(f"El producto {id_producto} no existe")
+        if not productos[id_producto]["activo"]:
+            raise VentaRechazada(f"El producto {id_producto} está discontinuado")
+
+    necesita_receta = any(p["condicion_venta"] in BAJO_RECETA for p in productos.values())
+    id_receta = datos.get("id_receta")
+    receta = None
+    if necesita_receta:
+        if not id_receta:
+            raise VentaRechazada("Hay productos bajo receta: hace falta 'id_receta'")
+        receta = db.recetas.find_one({"_id": id_receta})
+        if receta is None:
+            raise VentaRechazada(f"La receta {id_receta} no existe")
+        if receta["estado"] != "Vigente":
+            raise VentaRechazada(f"La receta {id_receta} está {receta['estado']}: tiene que estar Vigente")
+        if receta["id_cliente"] != datos["id_cliente"]:
+            raise VentaRechazada(f"La receta {id_receta} no es del cliente {datos['id_cliente']}")
+    elif id_receta:
+        # decisión: no se ignora en silencio una receta que no se va a usar
+        raise VentaRechazada(f"Se informó la receta {id_receta} pero ningún producto la requiere")
+
+    return {"cliente": cliente, "farmaceutico": farmaceutico, "sucursal": sucursal,
+            "productos": productos, "receta": receta}
 
 
 def _armar_venta(datos, productos):

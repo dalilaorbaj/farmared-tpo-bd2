@@ -10,15 +10,19 @@ farmacéutico y marcar la venta como descontada).
 Parámetros:
     id_venta (str): venta cuyo stock se descuenta.
     session: sesión de Mongo si se llama desde la transacción de q14 (opcional).
-Retorna: TODO definir (ej. dict con lo descontado de cada lote, para poder
-         compensar en q14 si el commit falla).
-Errores: StockInsuficiente (hecha). TODO definir el resto (venta inexistente, no Completada, ya
-         descontada, stock insuficiente).
+Retorna: dict con id_venta, id_sucursal y descontado: [{"lote", "unidades"}, ...]
+         (esa lista permite compensar en q14 si falla el commit).
+Errores: VentaInvalida (no existe, no es Completada o ya tiene el stock
+         descontado) y StockInsuficiente (algún ítem no alcanza; no se tocó nada).
 """
 import json
 
 from farmared import fechas
 from farmared.db import get_db, get_redis
+
+class VentaInvalida(Exception):
+    """La venta no existe, no es 'Completada' o ya se le descontó el stock."""
+
 
 class StockInsuficiente(Exception):
     """Algún ítem no alcanza con el stock vigente. No se tocó ningún lote."""
@@ -89,26 +93,57 @@ def descontar_lotes(r, id_sucursal, items):
     return respuesta["descontado"]
 
 
+def devolver_lotes(r, descontado):
+    """Deshace un descuento: vuelve a sumar a cada lote lo que informó el script.
+    Se usa para compensar (si falla el commit de q14 o el marcado de la venta).
+    MULTI/EXEC: las sumas se aplican juntas; ZINCRBY es relativo, así que no
+    hace falta releer las unidades."""
+    pipe = r.pipeline(transaction=True)
+    for d in descontado:
+        pipe.hincrby(f"lote:{d['lote']}", "unidades", d["unidades"])
+        pipe.zincrby("lotes:unidades", d["unidades"], d["lote"])
+    pipe.execute()
+
+
 def _leer_venta_y_sucursal(id_venta, session=None):
-    """Devuelve (venta, id_sucursal)."""
-    # TODO [JUE 12 · wrapper] 2: leer la venta (pasando session=session) y el farmacéutico para
-    # obtener la sucursal. Validar: ¿existe? ¿es Completada? ¿ya tiene
-    # stock_descontado? Pregunta de diseño: ¿qué ve esta lectura si la venta
-    # todavía no está commiteada?
-    raise NotImplementedError
+    """Devuelve (venta, id_sucursal). Lanza VentaInvalida si no se puede descontar."""
+    db = get_db()
+    # session=session: dentro de la transacción de q14 la venta todavía no está
+    # commiteada y solo se ve si la lectura usa la misma sesión.
+    venta = db.ventas.find_one({"_id": id_venta}, session=session)
+    if venta is None:
+        raise VentaInvalida(f"La venta {id_venta} no existe")
+    if venta["estado"] != "Completada":
+        raise VentaInvalida(f"La venta {id_venta} está {venta['estado']}: solo las Completadas descuentan stock")
+    if venta.get("stock_descontado"):
+        raise VentaInvalida(f"La venta {id_venta} ya tiene el stock descontado")
+    farmaceutico = db.farmaceuticos.find_one({"_id": venta["id_farmaceutico"]}, session=session)
+    return venta, farmaceutico["id_sucursal"]
 
 
 def ejecutar(id_venta, session=None):
     r = get_redis()
     db = get_db()
 
-    # TODO [JUE 12 · wrapper] 3: llamar a _leer_venta_y_sucursal.
+    venta, id_sucursal = _leer_venta_y_sucursal(id_venta, session)
 
-    # TODO [JUE 12 · wrapper] 4-5: llamar a descontar_lotes(r, id_sucursal, venta["items"])
-    # (ya hecho el miércoles: agrupa por producto, corre el Lua y lanza StockInsuficiente).
+    # todo o nada en Redis: si algún ítem no alcanza lanza StockInsuficiente y no se tocó nada
+    descontado = descontar_lotes(r, id_sucursal, venta["items"])
 
-    # TODO [JUE 12 · flag] 6: marcar stock_descontado = True en la venta (¿con session?).
-    # Decidir quién lo marca: q15 o q14.
+    # Marca la venta. El filtro $ne True hace que, si otra ejecución concurrente
+    # ya la marcó, esta no matchee nada: en ese caso se devuelve lo descontado
+    # (así nunca se descuenta dos veces la misma venta).
+    try:
+        marcada = db.ventas.update_one(
+            {"_id": id_venta, "stock_descontado": {"$ne": True}},
+            {"$set": {"stock_descontado": True}},
+            session=session,
+        )
+    except Exception:
+        devolver_lotes(r, descontado)
+        raise
+    if marcada.matched_count == 0:
+        devolver_lotes(r, descontado)
+        raise VentaInvalida(f"La venta {id_venta} ya tiene el stock descontado")
 
-    # TODO [JUE 12 · wrapper] 7: devolver lo descontado por lote.
-    raise NotImplementedError("q15 sin implementar")
+    return {"id_venta": id_venta, "id_sucursal": id_sucursal, "descontado": descontado}
