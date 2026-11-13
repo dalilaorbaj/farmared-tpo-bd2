@@ -17,14 +17,17 @@ Parámetros:
         python main.py q14 '{"id_cliente": "C009", "id_farmaceutico": "F019",
           "medio_pago": "Efectivo", "id_receta": "RC015",
           "items": [{"id_producto": "PRD003", "cantidad": 1}]}'
-Retorna: TODO definir (ej. la venta insertada + estado final de la receta).
-Errores: TODO definir (una excepción propia con el motivo de rechazo).
+Retorna: el documento de la venta registrada (con id_venta en "_id").
+Errores: VentaRechazada con el motivo (validación, receta cambiada o stock
+         insuficiente). En ese caso no queda nada escrito en Mongo ni en Redis.
 """
 import json
+from datetime import timedelta
 
 from farmared import fechas
 from farmared.consultas import q15_descontar_stock
-from farmared.db import get_db, get_mongo_client, get_redis
+from farmared.consultas.q15_descontar_stock import StockInsuficiente
+from farmared.db import get_db, get_mongo_client, get_redis  # noqa: F401 (get_redis: compensación del sábado)
 from farmared.esquema_mongo import VALIDADORES
 
 
@@ -111,48 +114,100 @@ def _validar(datos):
             "productos": productos, "receta": receta}
 
 
-def _armar_venta(datos, productos):
-    """Arma el documento de la venta (todavía sin insertar)."""
-    # TODO [VIE 13 · venta y receta] 6: id_venta nuevo (¿cómo evitás choques entre ventas simultáneas?),
-    #         precio_unit del catálogo en cada ítem, total = suma(cantidad*precio),
-    #         fecha = fechas.hoy(), tipo ('Venta libre' / 'Con receta'),
-    #         estado 'Completada', stock_descontado False (lo marca q15/q14).
-    raise NotImplementedError
+def _proximo_id_venta(db):
+    """V035 -> V036. Toma el mayor número existente (no el último por orden de
+    texto, que fallaría al pasar de V999 a V1000)."""
+    numeros = [int(i[1:]) for i in db.ventas.distinct("_id") if i[1:].isdigit()]
+    return f"V{max(numeros, default=0) + 1:03d}"
+
+
+def _armar_venta(datos, productos, db):
+    """Arma el documento de la venta (todavía sin insertar).
+    Los precios salen del catálogo (no de lo que mande el cliente) y el total es
+    la suma de cantidad * precio de los ítems."""
+    items = [{
+        "id_producto": it["id_producto"],
+        "cantidad": it["cantidad"],
+        "precio_unit": productos[it["id_producto"]]["precio_unit"],
+    } for it in datos["items"]]
+    id_receta = datos.get("id_receta")
+    return {
+        "_id": _proximo_id_venta(db),
+        "id_cliente": datos["id_cliente"],
+        "id_farmaceutico": datos["id_farmaceutico"],
+        "id_receta": id_receta,
+        "fecha": fechas.hoy(),
+        "tipo": "Con receta" if id_receta else "Venta libre",
+        "medio_pago": datos["medio_pago"],
+        "total": sum(it["cantidad"] * it["precio_unit"] for it in items),
+        "estado": "Completada",
+        "stock_descontado": False,  # lo marca q15 dentro de la transacción
+        "items": items,
+    }
 
 
 def _cambios_receta(receta):
-    """Devuelve el $set para la receta tras la dispensa (según reglas 2.11)."""
-    # TODO [VIE 13 · venta y receta] 7: Simple/Archivada -> Completada y proxima_dispensa None.
-    #         Tratamiento prolongado: dispensas_realizadas + 1; si quedan
-    #         dispensas -> proxima_dispensa = hoy + 30 días (timedelta);
-    #         si llegó a las autorizadas -> Completada y proxima_dispensa None.
-    raise NotImplementedError
+    """Devuelve el $set para la receta tras la dispensa (reglas 2.11)."""
+    realizadas = receta["dispensas_realizadas"] + 1
+    quedan = receta["tipo"] == "Tratamiento prolongado" and realizadas < receta["dispensas_autorizadas"]
+    if quedan:
+        # sigue Vigente; la próxima dispensa es a los 30 días
+        return {"dispensas_realizadas": realizadas, "proxima_dispensa": fechas.hoy() + timedelta(days=30)}
+    # Simple / Archivada (única dispensa) o última dispensa de un prolongado
+    return {"dispensas_realizadas": realizadas, "estado": "Completada", "proxima_dispensa": None}
 
 
 def ejecutar(datos):
     if isinstance(datos, str):
         datos = json.loads(datos)
 
-    # Fase 1: validar (no se escribió nada todavía)
-    # TODO [VIE 13 · integración] 8: llamar a _validar.
+    # Fase 1: validar. Solo lecturas: si algo falla no se escribió nada.
+    contexto = _validar(datos)
+    receta = contexto["receta"]
 
-    # Fase 2: transacción de Mongo + descuento en Redis
     client = get_mongo_client()
     db = get_db()
-    r = get_redis()  # noqa: F841 (para compensar)
+    venta = _armar_venta(datos, contexto["productos"], db)
 
-    # TODO [VIE 13 · integración] 9: abrir sesión y transacción (client.start_session(),
-    #         start_transaction). Decidir: manual vs with_transaction
-    #         (ojo: with_transaction reejecuta el callback -> ¿y Redis?).
-    #   a) insertar la venta (session=...)
-    #   b) actualizar la receta si corresponde (session=...)
-    #   c) llamar a q15_descontar_stock.ejecutar(id_venta, session=...)
-    #      -> si no hay stock: abort_transaction y re-lanzar como VentaRechazada.
-    #   d) commit_transaction().
+    # Fase 2: transacción de Mongo (venta + receta) con el descuento de Redis adentro.
+    # Se maneja a mano (start/commit/abort) y NO con with_transaction: éste
+    # reejecuta el callback ante errores transitorios y repetiría el descuento
+    # en Redis, que no participa de la transacción.
+    #
+    # Orden: lo que Mongo puede deshacer va primero y lo de Redis al final, justo
+    # antes del commit. Si algo falla antes de q15, Redis ni se tocó; si falta
+    # stock, el Lua no escribió nada.
+    with client.start_session() as session:
+        session.start_transaction()
+        try:
+            db.ventas.insert_one(venta, session=session)
 
-    # TODO [SÁB 14 · compensación] 10: si el commit falla DESPUÉS de que q15 descontó -> compensar en
-    #          Redis (volver a sumar lo que q15 informó, HASH y lotes:unidades).
-    #          ¿Qué pasa si la compensación también falla? (va al informe)
+            if receta is not None:
+                # el filtro asegura que la receta siga igual que cuando se validó
+                # (otra venta podría haberla usado en el medio)
+                resultado = db.recetas.update_one(
+                    {"_id": receta["_id"], "estado": "Vigente",
+                     "dispensas_realizadas": receta["dispensas_realizadas"]},
+                    {"$set": _cambios_receta(receta)},
+                    session=session,
+                )
+                if resultado.matched_count == 0:
+                    raise VentaRechazada(f"La receta {receta['_id']} cambió mientras se registraba la venta")
 
-    # TODO [SÁB 14 · compensación] 11: devolver la venta registrada.
-    raise NotImplementedError("q14 sin implementar")
+            q15_descontar_stock.ejecutar(venta["_id"], session=session)
+            venta["stock_descontado"] = True  # q15 la marcó dentro de la transacción
+        except StockInsuficiente as e:
+            session.abort_transaction()
+            raise VentaRechazada(str(e)) from e
+        except BaseException:
+            session.abort_transaction()
+            raise
+
+        # TODO [SÁB 14 · compensación] 10: si el commit falla acá, Redis ya descontó:
+        #          compensar con q15_descontar_stock.devolver_lotes(r, descontado)
+        #          (q15.ejecutar devuelve "descontado"; ahora no se está guardando).
+        #          ¿Qué pasa si la compensación también falla? (va al informe)
+        session.commit_transaction()
+
+    # TODO [SÁB 14 · compensación] 11: revisar qué se devuelve (hoy: la venta registrada).
+    return venta

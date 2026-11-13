@@ -14,6 +14,8 @@ import sys
 from datetime import datetime
 
 from farmared import carga
+from farmared.consultas.q14_registrar_venta import VentaRechazada
+from farmared.consultas.q15_descontar_stock import StockInsuficiente, VentaInvalida
 from farmared.consultas import (
     q01_productos_activos,
     q02_ventas_pendientes,
@@ -93,6 +95,10 @@ def main():
     funcion, _ = CONSULTAS[nombre]
     try:
         resultado = funcion(*args)
+    except (VentaRechazada, VentaInvalida, StockInsuficiente) as e:
+        # rechazo de un servicio de escritura (q14/q15): no es un error del programa
+        print(f"RECHAZADO: {e}")
+        sys.exit(1)
     except TypeError:
         error_de_uso(nombre, "cantidad de argumentos incorrecta")
     except ValueError as e:

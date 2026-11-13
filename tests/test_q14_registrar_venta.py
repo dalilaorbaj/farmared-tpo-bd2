@@ -6,12 +6,13 @@ integración con la transacción y con Redis (más abajo) necesita servicios
 reales y todavía no está implementada.
 """
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import mongomock
 import pytest
 
+from farmared import fechas
 from farmared.consultas import q14_registrar_venta as q14
 from farmared.consultas.q14_registrar_venta import VentaRechazada
 
@@ -130,33 +131,71 @@ def test_mismo_producto_repetido_en_dos_items_es_valido():
         q14._validar(venta(items=[{"id_producto": "PRD002", "cantidad": 1}, {"id_producto": "PRD002", "cantidad": 2}]))
 
 
-# --- Todavía sin implementar (viernes y sábado) -------------------------------------
+# --- Armar la venta ----------------------------------------------------------------
 
-@pytest.mark.skip(reason="TODO viernes: _armar_venta")
-def test_venta_libre_calcula_total_con_precios_del_catalogo():
-    ...
+def test_armar_venta_usa_precios_del_catalogo_y_calcula_el_total():
+    with mongo_en_memoria() as db:
+        datos = venta(items=[{"id_producto": "PRD002", "cantidad": 2}, {"id_producto": "PRD003", "cantidad": 1}],
+                      id_receta="RC015")
+        productos = {p["_id"]: p for p in db.productos.find()}
+
+        doc = q14._armar_venta(datos, productos, db)
+
+    assert doc["items"] == [
+        {"id_producto": "PRD002", "cantidad": 2, "precio_unit": 3500},
+        {"id_producto": "PRD003", "cantidad": 1, "precio_unit": 9800},
+    ]
+    assert doc["total"] == 2 * 3500 + 9800
+    assert doc["estado"] == "Completada"
+    assert doc["tipo"] == "Con receta"
+    assert doc["stock_descontado"] is False
+    assert doc["fecha"] == fechas.hoy()
 
 
-@pytest.mark.skip(reason="TODO viernes: _cambios_receta")
-def test_receta_simple_queda_completada():
-    ...
+def test_armar_venta_libre_no_lleva_receta():
+    with mongo_en_memoria() as db:
+        doc = q14._armar_venta(venta(), {"PRD002": db.productos.find_one({"_id": "PRD002"})}, db)
+
+    assert doc["tipo"] == "Venta libre"
+    assert doc["id_receta"] is None
 
 
-@pytest.mark.skip(reason="TODO viernes: _cambios_receta")
-def test_tratamiento_prolongado_con_dispensas_restantes_proxima_dispensa_30_dias():
-    ...
+def test_el_id_de_la_venta_es_el_siguiente_al_mayor_aunque_pase_de_tres_digitos():
+    with mongo_en_memoria() as db:
+        assert q14._proximo_id_venta(db) == "V001"
+        db.ventas.insert_many([{"_id": "V999"}, {"_id": "V1000"}, {"_id": "V002"}])
+        assert q14._proximo_id_venta(db) == "V1001"
 
 
-@pytest.mark.skip(reason="TODO viernes: _cambios_receta")
+# --- Cambios en la receta (reglas 2.11) ----------------------------------------------
+
+def test_receta_simple_queda_completada_sin_proxima_dispensa():
+    receta = {"tipo": "Simple", "dispensas_autorizadas": 1, "dispensas_realizadas": 0}
+
+    assert q14._cambios_receta(receta) == {
+        "dispensas_realizadas": 1, "estado": "Completada", "proxima_dispensa": None}
+
+
+def test_receta_archivada_queda_completada():
+    receta = {"tipo": "Archivada", "dispensas_autorizadas": 1, "dispensas_realizadas": 0}
+
+    assert q14._cambios_receta(receta)["estado"] == "Completada"
+
+
+def test_tratamiento_prolongado_con_dispensas_restantes_proxima_dispensa_a_30_dias():
+    receta = {"tipo": "Tratamiento prolongado", "dispensas_autorizadas": 3, "dispensas_realizadas": 1}
+
+    cambios = q14._cambios_receta(receta)
+
+    assert cambios == {"dispensas_realizadas": 2, "proxima_dispensa": fechas.hoy() + timedelta(days=30)}
+    assert "estado" not in cambios  # sigue Vigente
+
+
 def test_tratamiento_prolongado_ultima_dispensa_queda_completada():
-    ...
+    receta = {"tipo": "Tratamiento prolongado", "dispensas_autorizadas": 3, "dispensas_realizadas": 2}
+
+    assert q14._cambios_receta(receta) == {
+        "dispensas_realizadas": 3, "estado": "Completada", "proxima_dispensa": None}
 
 
-@pytest.mark.skip(reason="TODO viernes: integración con transacción")
-def test_sin_stock_no_queda_venta_ni_receta_modificada_ni_redis_tocado():
-    ...
-
-
-@pytest.mark.skip(reason="TODO sábado: compensación")
-def test_falla_el_commit_compensa_el_stock_en_redis():
-    ...
+# --- Integración con q15 y la transacción: ver tests/integracion/test_q14_integracion.py ---
