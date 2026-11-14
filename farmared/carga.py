@@ -143,6 +143,9 @@ def cargar_mongo(db, datos):
     for v in datos["ventas"]:
         doc = a_documento(v, "id_venta")
         doc["items"] = items[doc["_id"]]
+        # el stock de los CSV ya es el actual: las ventas Completadas históricas
+        # ya están descontadas. q15 usa este flag para no descontar dos veces.
+        doc["stock_descontado"] = doc["estado"] == "Completada"
         ventas.append(doc)
     db.ventas.insert_many(ventas)
     print(f"  mongo  {'ventas':<15} {len(ventas):>3} docs ({len(datos['detalle_ventas'])} items embebidos)")

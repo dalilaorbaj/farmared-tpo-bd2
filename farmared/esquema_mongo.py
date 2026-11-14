@@ -85,6 +85,7 @@ VALIDADORES = {
             "medio_pago": {"enum": ["Efectivo", "Débito", "Crédito", "Transferencia", "Obra social"]},
             "total": INT,
             "estado": {"enum": ["Completada", "Pendiente", "Anulada"]},
+            "stock_descontado": BOOL,
             "items": {
                 "bsonType": "array",
                 "minItems": 1,
