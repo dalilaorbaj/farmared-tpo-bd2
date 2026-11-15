@@ -144,22 +144,29 @@ def _validar(datos):
             "productos": productos, "receta": receta}
 
 
+def _mayor_numero(ids):
+    """Mayor número entre ids como V035 o D044 (0 si no hay ninguno)."""
+    return max((int(i[1:]) for i in ids if isinstance(i, str) and i[1:].isdigit()), default=0)
+
+
 def _proximo_id_venta(db):
     """V035 -> V036. Toma el mayor número existente (no el último por orden de
     texto, que fallaría al pasar de V999 a V1000)."""
-    numeros = [int(i[1:]) for i in db.ventas.distinct("_id") if i[1:].isdigit()]
-    return f"V{max(numeros, default=0) + 1:03d}"
+    return f"V{_mayor_numero(db.ventas.distinct('_id')) + 1:03d}"
 
 
 def _armar_venta(datos, productos, db):
     """Arma el documento de la venta (todavía sin insertar).
     Los precios salen del catálogo (no de lo que mande el cliente) y el total es
-    la suma de cantidad * precio de los ítems."""
+    la suma de cantidad * precio de los ítems. Cada ítem lleva su id_detalle,
+    siguiente al mayor existente, igual que los ítems cargados desde los CSV."""
+    ultimo_detalle = _mayor_numero(db.ventas.distinct("items.id_detalle"))
     items = [{
+        "id_detalle": f"D{ultimo_detalle + n:03d}",
         "id_producto": it["id_producto"],
         "cantidad": it["cantidad"],
         "precio_unit": productos[it["id_producto"]]["precio_unit"],
-    } for it in datos["items"]]
+    } for n, it in enumerate(datos["items"], start=1)]
     id_receta = datos.get("id_receta")
     return {
         "_id": _proximo_id_venta(db),
@@ -207,7 +214,8 @@ def _quedo_registrada(db, id_venta):
 
 
 def _es_choque(error):
-    """Otra venta tomó el mismo id o tocó la misma receta al mismo tiempo."""
+    """Otra venta tomó el mismo id (de venta o de detalle, los dos tienen índice
+    único) o tocó la misma receta al mismo tiempo."""
     return isinstance(error, DuplicateKeyError) or (
         isinstance(error, PyMongoError) and error.has_error_label("TransientTransactionError"))
 

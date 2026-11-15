@@ -158,6 +158,7 @@ def test_dos_ventas_seguidas_tienen_ids_distintos(entorno):
     b = q14.registrar(pedido())
 
     assert a["venta"]["_id"] != b["venta"]["_id"]
+    assert (a["venta"]["items"][0]["id_detalle"], b["venta"]["items"][0]["id_detalle"]) == ("D001", "D002")
     assert db.ventas.count_documents({}) == 2
 
 
@@ -354,6 +355,8 @@ def test_ventas_simultaneas_no_dejan_stock_negativo_ni_venden_de_mas(entorno):
     registradas = [x for x in resultados if isinstance(x, str)]
     rechazadas = [x for x in resultados if isinstance(x, VentaRechazada)]
     assert len(registradas) == len(set(registradas))  # ids únicos
+    detalles = [it["id_detalle"] for v in db.ventas.find() for it in v["items"]]
+    assert len(detalles) == len(set(detalles))  # id_detalle únicos
     assert db.ventas.count_documents({}) == len(registradas)
     estado = lotes(r)
     assert all(en_hash >= 0 and en_hash == en_zset for en_hash, en_zset in estado.values())

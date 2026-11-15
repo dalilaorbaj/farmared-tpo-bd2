@@ -151,8 +151,8 @@ def test_armar_venta_usa_precios_del_catalogo_y_calcula_el_total():
         doc = q14._armar_venta(datos, productos, db)
 
     assert doc["items"] == [
-        {"id_producto": "PRD002", "cantidad": 2, "precio_unit": 3500},
-        {"id_producto": "PRD003", "cantidad": 1, "precio_unit": 9800},
+        {"id_detalle": "D001", "id_producto": "PRD002", "cantidad": 2, "precio_unit": 3500},
+        {"id_detalle": "D002", "id_producto": "PRD003", "cantidad": 1, "precio_unit": 9800},
     ]
     assert doc["total"] == 2 * 3500 + 9800
     assert doc["estado"] == "Completada"
@@ -167,6 +167,19 @@ def test_armar_venta_libre_no_lleva_receta():
 
     assert doc["tipo"] == "Venta libre"
     assert doc["id_receta"] is None
+
+
+def test_los_id_detalle_siguen_al_mayor_de_todas_las_ventas():
+    with mongo_en_memoria() as db:
+        db.ventas.insert_many([
+            {"_id": "V001", "items": [{"id_detalle": "D043"}, {"id_detalle": "D044"}]},
+            {"_id": "V002", "items": [{"id_detalle": "D009"}]},
+        ])
+        datos = venta(items=[{"id_producto": "PRD002", "cantidad": 1}, {"id_producto": "PRD002", "cantidad": 3}])
+
+        doc = q14._armar_venta(datos, {"PRD002": db.productos.find_one({"_id": "PRD002"})}, db)
+
+    assert [it["id_detalle"] for it in doc["items"]] == ["D045", "D046"]
 
 
 def test_el_id_de_la_venta_es_el_siguiente_al_mayor_aunque_pase_de_tres_digitos():

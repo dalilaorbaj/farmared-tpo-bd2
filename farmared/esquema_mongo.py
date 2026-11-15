@@ -121,6 +121,10 @@ INDICES = {
         ([("id_farmaceutico", ASCENDING), ("fecha", DESCENDING)], {}),
         ([("fecha", DESCENDING)], {}),
         ([("estado", ASCENDING)], {}),
+        # el detalle va embebido, así que el id_detalle no es un _id: este índice
+        # impide que dos ventas registradas a la vez (q14) tomen el mismo
+        ([("items.id_detalle", ASCENDING)],
+         {"unique": True, "partialFilterExpression": {"items.id_detalle": {"$exists": True}}}),
     ],
 }
 
