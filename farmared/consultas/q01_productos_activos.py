@@ -10,11 +10,13 @@ invalidar_cache().
 
 Parámetros:
     usar_cache (bool): si es False va siempre a Mongo (y refresca la cache).
+    Desde la terminal llega como texto ("false").
 Retorna:
     lista de productos (dict) con el proveedor embebido en "proveedor".
 """
 import json
 
+from farmared.argumentos import a_bool
 from farmared.db import get_db, get_redis
 
 CLAVE_CACHE = "cache:q01:productos_activos"
@@ -41,6 +43,7 @@ def invalidar_cache():
 
 
 def ejecutar(usar_cache=True):
+    usar_cache = a_bool(usar_cache, "usar_cache")
     r = get_redis()
     if usar_cache:
         guardado = r.get(CLAVE_CACHE)

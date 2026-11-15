@@ -31,7 +31,7 @@ from farmared.consultas import (
 )
 
 CONSULTAS = {
-    "q01": (q01_productos_activos.ejecutar, "Productos activos con datos del proveedor"),
+    "q01": (q01_productos_activos.ejecutar, "Productos activos con datos del proveedor  [usar_cache]"),
     "q02": (q02_ventas_pendientes.ejecutar, "Ventas pendientes con farmacéutico y total"),
     "q03": (q03_historial_cliente.ejecutar, "Historial completo de un cliente  <id_cliente>"),
     "q04": (q04_clientes_varias_recetas.ejecutar, "Clientes con más de una receta"),

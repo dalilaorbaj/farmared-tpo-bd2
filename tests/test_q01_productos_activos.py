@@ -92,6 +92,17 @@ def test_sin_cache_vuelve_a_leer_mongo_y_la_refresca():
     assert [p["_id"] for p in siguiente] == ["PRD001", "PRD002"]
 
 
+def test_desde_la_terminal_false_llega_como_texto_y_no_usa_la_cache():
+    with motores() as (db, _redis):
+        db.productos.insert_one({"_id": "PRD001", "nombre": "Paracetamol", "activo": True})
+        q01.ejecutar()
+        db.productos.insert_one({"_id": "PRD002", "nombre": "Ibuprofeno", "activo": True})
+
+        resultado = q01.ejecutar("false")
+
+    assert [p["_id"] for p in resultado] == ["PRD001", "PRD002"]
+
+
 def test_invalidar_cache_obliga_a_releer():
     # Arrange
     with motores() as (db, _redis):

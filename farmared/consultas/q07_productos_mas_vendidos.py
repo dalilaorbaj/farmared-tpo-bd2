@@ -25,21 +25,8 @@ Parámetros:
 Retorna: lista de hasta 5 dict con id_producto, nombre y unidades, ordenada
 por unidades descendente.
 """
+from farmared.argumentos import a_bool
 from farmared.db import get_db
-
-_TRUE = {"true", "1", "si", "sí", "yes"}
-_FALSE = {"false", "0", "no"}
-
-
-def _a_bool(valor):
-    if isinstance(valor, bool):
-        return valor
-    texto = str(valor).strip().lower()
-    if texto in _TRUE:
-        return True
-    if texto in _FALSE:
-        return False
-    raise ValueError("solo_activos debe ser true o false")
 
 
 def _pipeline(solo_activos):
@@ -86,5 +73,5 @@ def _pipeline(solo_activos):
 
 
 def ejecutar(solo_activos=False):
-    solo_activos = _a_bool(solo_activos)
+    solo_activos = a_bool(solo_activos, "solo_activos")
     return list(get_db().ventas.aggregate(_pipeline(solo_activos)))

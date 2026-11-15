@@ -29,21 +29,8 @@ ordenada por id_cliente. Depende de la fecha del sistema (fechas.hoy()).
 from datetime import timedelta
 
 from farmared import fechas
+from farmared.argumentos import a_bool
 from farmared.db import get_db
-
-_TRUE = {"true", "1", "si", "sí", "yes"}
-_FALSE = {"false", "0", "no"}
-
-
-def _a_bool(valor):
-    if isinstance(valor, bool):
-        return valor
-    texto = str(valor).strip().lower()
-    if texto in _TRUE:
-        return True
-    if texto in _FALSE:
-        return False
-    raise ValueError("considerar_anuladas debe ser true o false")
 
 
 def _en_el_anio(desde, considerar_anuladas):
@@ -54,7 +41,7 @@ def _en_el_anio(desde, considerar_anuladas):
 
 
 def ejecutar(considerar_anuladas=True):
-    considerar_anuladas = _a_bool(considerar_anuladas)
+    considerar_anuladas = a_bool(considerar_anuladas, "considerar_anuladas")
     desde = fechas.hoy() - timedelta(days=365)
     pipeline = [
         # todas las ventas del cliente; el índice arranca por id_cliente

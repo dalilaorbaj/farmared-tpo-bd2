@@ -31,21 +31,8 @@ Con contar_repetidos=False cada cliente tiene id_cliente, nombre, apellido,
 dni y activo, ordenados por id_cliente. Con True se suman id_venta, fecha,
 estado e id_farmaceutico, ordenados por id_cliente, fecha e id_venta.
 """
+from farmared.argumentos import a_bool
 from farmared.db import get_db
-
-_TRUE = {"true", "1", "si", "sí", "yes"}
-_FALSE = {"false", "0", "no"}
-
-
-def _a_bool(valor):
-    if isinstance(valor, bool):
-        return valor
-    texto = str(valor).strip().lower()
-    if texto in _TRUE:
-        return True
-    if texto in _FALSE:
-        return False
-    raise ValueError("contar_repetidos debe ser true o false")
 
 
 def _datos_cliente():
@@ -113,7 +100,7 @@ def _pipeline(id_sucursal, contar_repetidos):
 def ejecutar(id_sucursal=None, contar_repetidos=False):
     if not id_sucursal:
         return {"error": "Falta el id de la sucursal. Uso: python main.py q10 <id_sucursal> [contar_repetidos]"}
-    contar_repetidos = _a_bool(contar_repetidos)
+    contar_repetidos = a_bool(contar_repetidos, "contar_repetidos")
 
     db = get_db()
     sucursal = db.sucursales.find_one({"_id": id_sucursal})
