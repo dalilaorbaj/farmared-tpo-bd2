@@ -34,8 +34,9 @@ Desde la terminal:
     python main.py q13 baja C010
 
 Retorna: dict con ok=True, un mensaje y el cliente (en modificar y baja,
-también el estado anterior). Si una validación falla no se escribe nada y
-devuelve ok=False con el motivo en "error".
+también el estado anterior). Si una validación falla no se escribe nada:
+alta, modificar y baja lanzan ErrorValidacion, y ejecutar (la entrada de la
+terminal) la convierte en {"ok": False, "error": motivo}.
 """
 import json
 import re
@@ -159,7 +160,9 @@ def baja(id_cliente):
     if not antes["activo"]:
         raise ErrorValidacion(f"el cliente {id_cliente} ya estaba dado de baja")
 
-    db.clientes.update_one({"_id": id_cliente}, {"$set": {"activo": False}})
+    escrito = db.clientes.update_one({"_id": id_cliente, "activo": True}, {"$set": {"activo": False}})
+    if escrito.matched_count == 0:
+        raise ErrorValidacion(f"el cliente {id_cliente} ya estaba dado de baja")
     despues = db.clientes.find_one({"_id": id_cliente})
     return {"ok": True, "mensaje": f"{id_cliente} activo: false", "antes": antes, "cliente": despues}
 
