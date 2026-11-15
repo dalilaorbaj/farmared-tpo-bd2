@@ -6,6 +6,10 @@ Motor: MongoDB. La venta guarda id_farmaceutico como referencia, así que se
 resuelve con dos $lookup (venta -> farmacéutico -> sucursal). El índice por
 estado en ventas hace que el $match inicial no recorra toda la colección.
 
+Criterio: una venta pendiente cuyo farmacéutico (o su sucursal) no esté en la
+base aparece igual, con esos datos en null, en vez de desaparecer del reporte
+(mismo criterio que q11).
+
 Parámetros: ninguno.
 Retorna: lista de dict con id_venta, fecha, id_cliente, total y farmaceutico.
 """
@@ -21,15 +25,15 @@ def ejecutar():
             "foreignField": "_id",
             "as": "farm",
         }},
-        {"$unwind": "$farm"},
+        {"$unwind": {"path": "$farm", "preserveNullAndEmptyArrays": True}},
         {"$lookup": {
             "from": "sucursales",
             "localField": "farm.id_sucursal",
             "foreignField": "_id",
             "as": "suc",
         }},
-        {"$unwind": "$suc"},
-        {"$sort": {"fecha": 1}},
+        {"$unwind": {"path": "$suc", "preserveNullAndEmptyArrays": True}},
+        {"$sort": {"fecha": 1, "_id": 1}},
         {"$project": {
             "_id": 0,
             "id_venta": "$_id",
@@ -37,10 +41,10 @@ def ejecutar():
             "id_cliente": 1,
             "total": 1,
             "farmaceutico": {
-                "id": "$farm._id",
-                "nombre": {"$concat": ["$farm.nombre", " ", "$farm.apellido"]},
-                "matricula": "$farm.matricula",
-                "sucursal": "$suc.nombre",
+                "id": "$id_farmaceutico",
+                "nombre": {"$ifNull": [{"$concat": ["$farm.nombre", " ", "$farm.apellido"]}, None]},
+                "matricula": {"$ifNull": ["$farm.matricula", None]},
+                "sucursal": {"$ifNull": ["$suc.nombre", None]},
             },
         }},
     ]

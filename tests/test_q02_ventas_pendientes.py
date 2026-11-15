@@ -88,3 +88,24 @@ def test_sin_pendientes_devuelve_lista_vacia():
 
     # Assert
     assert resultado == []
+
+
+def test_pendiente_con_farmaceutico_inexistente_aparece_igual_con_datos_nulos():
+    # Arrange
+    with mongo_en_memoria() as db:
+        db.ventas.insert_one({
+            "_id": "V040", "estado": "Pendiente", "fecha": dia("2026-11-01"),
+            "id_cliente": "C001", "id_farmaceutico": "F999", "total": 1200,
+        })
+
+        # Act
+        resultado = q02.ejecutar()
+
+    # Assert
+    assert resultado == [{
+        "id_venta": "V040",
+        "fecha": dia("2026-11-01"),
+        "id_cliente": "C001",
+        "total": 1200,
+        "farmaceutico": {"id": "F999", "nombre": None, "matricula": None, "sucursal": None},
+    }]
