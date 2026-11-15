@@ -137,9 +137,31 @@ def test_pasar_a_sin_cobertura_limpia_el_nro_afiliado():
 
 def test_pasar_a_una_cobertura_sin_nro_afiliado_se_rechaza():
     with mongo_en_memoria(cliente("C013", "43890112", "Sin cobertura", None)) as db:
-        with pytest.raises(q13.ErrorValidacion, match="falta nro_afiliado"):
+        with pytest.raises(q13.ErrorValidacion, match="nro_afiliado"):
             q13.modificar("C013", {"obra_social": "PAMI"})
         assert db.clientes.find_one({"_id": "C013"})["obra_social"] == "Sin cobertura"
+
+
+def test_cambiar_de_obra_social_sin_afiliado_nuevo_no_hereda_el_de_la_anterior():
+    with mongo_en_memoria(cliente("C009", "42118733", "OSDE", "OS-411872")) as db:
+        with pytest.raises(q13.ErrorValidacion, match="nro_afiliado nuevo"):
+            q13.modificar("C009", {"obra_social": "PAMI"})
+        guardado = db.clientes.find_one({"_id": "C009"})
+    assert (guardado["obra_social"], guardado["nro_afiliado"]) == ("OSDE", "OS-411872")
+
+
+def test_cambiar_de_obra_social_con_afiliado_nuevo():
+    with mongo_en_memoria(cliente("C009", "42118733", "OSDE", "OS-411872")) as db:
+        q13.modificar("C009", {"obra_social": "PAMI", "nro_afiliado": "PA-700100"})
+        guardado = db.clientes.find_one({"_id": "C009"})
+    assert (guardado["obra_social"], guardado["nro_afiliado"]) == ("PAMI", "PA-700100")
+
+
+def test_mandar_la_misma_obra_social_no_obliga_a_repetir_el_afiliado():
+    with mongo_en_memoria(cliente("C009", "42118733", "OSDE", "OS-411872")) as db:
+        q13.modificar("C009", {"obra_social": "OSDE", "telefono": "1150000000"})
+        guardado = db.clientes.find_one({"_id": "C009"})
+    assert guardado["nro_afiliado"] == "OS-411872"
 
 
 def test_no_se_modifica_un_cliente_dado_de_baja():

@@ -23,6 +23,8 @@ tipos y valores.
         Solo email, telefono, ciudad, provincia, obra_social y nro_afiliado.
         El cliente tiene que existir y estar activo. Después del cambio la
         cobertura tiene que seguir siendo coherente (mismas reglas que el alta).
+        Si cambia la obra social (y no pasa a "Sin cobertura"), el cambio
+        tiene que traer el nro_afiliado nuevo: el de la anterior no sirve.
 
     baja(id_cliente)
         Baja lógica: activo = False. No se borra porque sus ventas y recetas
@@ -138,6 +140,11 @@ def modificar(id_cliente, cambios):
         raise ErrorValidacion(f"el cliente {id_cliente} está dado de baja")
 
     nuevos = {campo: _texto(valor) for campo, valor in cambios.items()}
+    # el número de afiliado es de una obra social: si se cambia de cobertura,
+    # el de la anterior no sirve y hay que mandar el nuevo
+    cambia_cobertura = "obra_social" in nuevos and nuevos["obra_social"] != antes["obra_social"]
+    if cambia_cobertura and nuevos["obra_social"] != SIN_COBERTURA and not nuevos.get("nro_afiliado"):
+        raise ErrorValidacion("al cambiar de obra social hay que informar el nro_afiliado nuevo")
     resultado = {**antes, **nuevos}
     _validar_cobertura(resultado)
     # _validar_cobertura puede haber limpiado nro_afiliado (pasó a Sin cobertura)
