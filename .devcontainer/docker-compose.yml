@@ -17,7 +17,9 @@ services:
 
   # Mongo corre como replica set de un solo nodo porque las transacciones
   # multi-documento (las usamos en el registro de ventas) no funcionan en un standalone.
-  # El healthcheck inicializa el replica set la primera vez.
+  # El healthcheck inicializa el replica set la primera vez y recién da el
+  # servicio por sano cuando el nodo ya es primario (antes no acepta escrituras
+  # y la carga del postCreateCommand fallaría).
   mongo:
     image: mongo:7.0
     command: ["--replSet", "rs0", "--bind_ip_all"]
@@ -27,7 +29,7 @@ services:
       - mongo_data:/data/db
     healthcheck:
       test: >
-        mongosh --quiet --eval "try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}).ok }"
+        mongosh --quiet --eval "try { rs.status() } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]}) } quit(db.hello().isWritablePrimary ? 0 : 1)"
       interval: 5s
       timeout: 10s
       retries: 30
