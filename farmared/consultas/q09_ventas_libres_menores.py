@@ -16,5 +16,5 @@ def ejecutar(monto_max=5000):
         "total": {"$lt": int(monto_max)},
         "estado": {"$ne": "Anulada"},
     }
-    proyeccion = {"items": 0}
+    proyeccion = {"items": 0, "stock_descontado": 0}
     return list(get_db().ventas.find(filtro, proyeccion).sort("fecha", 1))
