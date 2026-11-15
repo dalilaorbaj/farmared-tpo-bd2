@@ -122,3 +122,19 @@ def test_sin_ficha_de_producto_los_datos_de_catalogo_son_nulos():
     assert resultado[0]["sucursal"] == {"id": "S404", "nombre": None, "tipo": None}
     assert resultado[0]["proveedor"] == {"id": None, "razon_social": None, "telefono": None}
     assert resultado[0]["vencido"] is True
+
+
+def test_lote_sin_hash_no_corta_la_consulta():
+    # Arrange: el lote figura en lotes:unidades pero perdió su HASH
+    with motores() as (db, redis):
+        redis.zadd("lotes:unidades", {"L777": 4})
+
+        # Act
+        resultado = q08.ejecutar()
+
+    # Assert
+    assert len(resultado) == 1
+    assert resultado[0]["id_lote"] == "L777"
+    assert resultado[0]["unidades"] == 4
+    assert resultado[0]["vencido"] is None
+    assert resultado[0]["producto"] == {"id": None, "nombre": None}
