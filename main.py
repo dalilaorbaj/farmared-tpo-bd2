@@ -9,6 +9,7 @@ Punto de entrada para correr las consultas desde la terminal.
 Para agregar una consulta: crear el módulo en farmared/consultas y sumarlo
 al diccionario CONSULTAS.
 """
+import inspect
 import json
 import sys
 from datetime import datetime
@@ -91,10 +92,15 @@ def main():
         sys.exit(1)
 
     funcion, _ = CONSULTAS[nombre]
+    # la cantidad de argumentos se valida contra la firma antes de llamar: así
+    # un TypeError que salga de adentro de la consulta (un bug) no se confunde
+    # con un error de uso
     try:
-        resultado = funcion(*args)
+        inspect.signature(funcion).bind(*args)
     except TypeError:
         error_de_uso(nombre, "cantidad de argumentos incorrecta")
+    try:
+        resultado = funcion(*args)
     except ValueError as e:
         # int("abc") tira un mensaje en inglés; los nuestros ya vienen en castellano
         error_de_uso(nombre, "se esperaba un número" if "invalid literal" in str(e) else str(e))
