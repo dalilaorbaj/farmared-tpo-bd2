@@ -66,6 +66,12 @@ def uso():
         print(f"  {nombre}      {desc}")
 
 
+def error_de_uso(nombre, motivo):
+    print(f"Argumentos inválidos para {nombre}: {motivo}\n")
+    uso()
+    sys.exit(1)
+
+
 def main():
     if len(sys.argv) < 2:
         uso()
@@ -81,7 +87,14 @@ def main():
         sys.exit(1)
 
     funcion, _ = CONSULTAS[nombre]
-    mostrar(funcion(*args))
+    try:
+        resultado = funcion(*args)
+    except TypeError:
+        error_de_uso(nombre, "cantidad de argumentos incorrecta")
+    except ValueError as e:
+        # int("abc") tira un mensaje en inglés; los nuestros ya vienen en castellano
+        error_de_uso(nombre, "se esperaba un número" if "invalid literal" in str(e) else str(e))
+    mostrar(resultado)
 
 
 if __name__ == "__main__":
