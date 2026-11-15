@@ -8,31 +8,59 @@ q15: si el descuento de stock falla, no queda venta ni receta modificadas.
 
 Motores: MongoDB (venta + receta, en una transacción) + Redis (stock, vía q15).
 
-Parámetros:
-    datos (dict | str JSON):
-        id_cliente, id_farmaceutico, medio_pago,
-        items: [{"id_producto": ..., "cantidad": ...}, ...],
-        id_receta (opcional)
-    Ejemplo CLI:
-        python main.py q14 '{"id_cliente": "C009", "id_farmaceutico": "F019",
-          "medio_pago": "Efectivo", "id_receta": "RC015",
-          "items": [{"id_producto": "PRD003", "cantidad": 1}]}'
-Retorna: el documento de la venta registrada (con id_venta en "_id").
-Errores: VentaRechazada con el motivo (validación, receta cambiada o stock
-         insuficiente). En ese caso no queda nada escrito en Mongo ni en Redis.
+Consistencia entre los dos motores (no comparten transacción):
+    1. Validar: solo lecturas. Si algo falla no se escribió nada.
+    2. Transacción de Mongo: insertar la venta + actualizar la receta.
+    3. Dentro de la transacción, q15 descuenta el stock en Redis (script Lua,
+       todo o nada). Si no alcanza -> abort: ni venta ni receta quedan
+       modificadas y Redis no se tocó.
+    4. Commit. Si falla después de que Redis descontó, se compensa devolviendo
+       a cada lote lo que informó q15.
+    Redis va último porque es lo único que Mongo no puede deshacer.
+
+    registrar(datos)
+        datos: dict con id_cliente, id_farmaceutico, medio_pago,
+        items: [{"id_producto": ..., "cantidad": ...}, ...] e id_receta (opcional).
+        Los precios y el total NO se reciben: salen del catálogo.
+        Devuelve la venta registrada, la receta como quedó y los lotes
+        descontados. Lanza VentaRechazada con el motivo si no se puede registrar.
+
+Desde la terminal:
+    python main.py q14 '{"id_cliente": "C009", "id_farmaceutico": "F019", "medio_pago": "Efectivo", "id_receta": "RC015", "items": [{"id_producto": "PRD003", "cantidad": 1}]}'
+
+Retorna: dict con ok=True, un mensaje, venta, receta (None si es venta libre) y
+lotes_descontados. Si se rechaza no queda nada escrito en Mongo ni en Redis:
+registrar lanza VentaRechazada y ejecutar (la entrada de la terminal) la
+convierte en {"ok": False, "error": motivo}, igual que q13.
 """
 import json
+import random
+import time
 from datetime import timedelta
 
 from farmared import fechas
 from farmared.consultas import q15_descontar_stock
+from pymongo.errors import DuplicateKeyError, PyMongoError
+
 from farmared.consultas.q15_descontar_stock import StockInsuficiente
-from farmared.db import get_db, get_mongo_client, get_redis  # noqa: F401 (get_redis: compensación del sábado)
+from farmared.db import get_db, get_mongo_client, get_redis
 from farmared.esquema_mongo import VALIDADORES
+
+
+REINTENTOS = 8
 
 
 class VentaRechazada(Exception):
     """Motivo de rechazo por validación o por falta de stock."""
+
+
+class CompensacionFallida(Exception):
+    """Falló el commit y tampoco se pudo devolver el stock a Redis: hay que
+    reponerlo a mano. El mensaje lista los lotes y unidades."""
+
+
+class _Reintentar(Exception):
+    """Choque con otra operación concurrente antes de dejar nada escrito."""
 
 
 MEDIOS_PAGO = VALIDADORES["ventas"]["$jsonSchema"]["properties"]["medio_pago"]["enum"]
@@ -106,6 +134,8 @@ def _validar(datos):
             raise VentaRechazada(f"La receta {id_receta} está {receta['estado']}: tiene que estar Vigente")
         if receta["id_cliente"] != datos["id_cliente"]:
             raise VentaRechazada(f"La receta {id_receta} no es del cliente {datos['id_cliente']}")
+        if receta["dispensas_realizadas"] >= receta["dispensas_autorizadas"]:
+            raise VentaRechazada(f"La receta {id_receta} ya no tiene dispensas disponibles")
     elif id_receta:
         # decisión: no se ignora en silencio una receta que no se va a usar
         raise VentaRechazada(f"Se informó la receta {id_receta} pero ningún producto la requiere")
@@ -157,19 +187,39 @@ def _cambios_receta(receta):
     return {"dispensas_realizadas": realizadas, "estado": "Completada", "proxima_dispensa": None}
 
 
-def ejecutar(datos):
-    if isinstance(datos, str):
-        datos = json.loads(datos)
+def _commit(session):
+    """Commit reintentando mientras el resultado sea desconocido (es idempotente)."""
+    for intento in range(REINTENTOS):
+        try:
+            session.commit_transaction()
+            return
+        except PyMongoError as e:
+            if not e.has_error_label("UnknownTransactionCommitResult") or intento == REINTENTOS - 1:
+                raise
 
-    # Fase 1: validar. Solo lecturas: si algo falla no se escribió nada.
-    contexto = _validar(datos)
-    receta = contexto["receta"]
 
+def _quedo_registrada(db, id_venta):
+    """Después de un commit con error: ¿la venta igual quedó guardada?"""
+    try:
+        return db.ventas.find_one({"_id": id_venta}, {"_id": 1}) is not None
+    except PyMongoError:
+        return False
+
+
+def _es_choque(error):
+    """Otra venta tomó el mismo id o tocó la misma receta al mismo tiempo."""
+    return isinstance(error, DuplicateKeyError) or (
+        isinstance(error, PyMongoError) and error.has_error_label("TransientTransactionError"))
+
+
+def _registrar(datos, contexto):
     client = get_mongo_client()
     db = get_db()
+    receta = contexto["receta"]
     venta = _armar_venta(datos, contexto["productos"], db)
+    cambios = _cambios_receta(receta) if receta is not None else None
 
-    # Fase 2: transacción de Mongo (venta + receta) con el descuento de Redis adentro.
+    # Transacción de Mongo (venta + receta) con el descuento de Redis adentro.
     # Se maneja a mano (start/commit/abort) y NO con with_transaction: éste
     # reejecuta el callback ante errores transitorios y repetiría el descuento
     # en Redis, que no participa de la transacción.
@@ -188,26 +238,76 @@ def ejecutar(datos):
                 resultado = db.recetas.update_one(
                     {"_id": receta["_id"], "estado": "Vigente",
                      "dispensas_realizadas": receta["dispensas_realizadas"]},
-                    {"$set": _cambios_receta(receta)},
+                    {"$set": cambios},
                     session=session,
                 )
                 if resultado.matched_count == 0:
                     raise VentaRechazada(f"La receta {receta['_id']} cambió mientras se registraba la venta")
 
-            q15_descontar_stock.ejecutar(venta["_id"], session=session)
-            venta["stock_descontado"] = True  # q15 la marcó dentro de la transacción
+            descontado = q15_descontar_stock.descontar(venta["_id"], session=session)["descontado"]
         except StockInsuficiente as e:
             session.abort_transaction()
             raise VentaRechazada(str(e)) from e
-        except BaseException:
+        except BaseException as e:
+            # En cualquier salida por acá Redis está como antes: o no se llegó a
+            # q15, o q15 devolvió lo que había descontado.
             session.abort_transaction()
+            if _es_choque(e):
+                raise _Reintentar() from e
             raise
 
-        # TODO [SÁB 14 · compensación] 10: si el commit falla acá, Redis ya descontó:
-        #          compensar con q15_descontar_stock.devolver_lotes(r, descontado)
-        #          (q15.ejecutar devuelve "descontado"; ahora no se está guardando).
-        #          ¿Qué pasa si la compensación también falla? (va al informe)
-        session.commit_transaction()
+        # A partir de acá Redis ya descontó. Si el commit falla hay que compensar.
+        try:
+            _commit(session)
+        except Exception as e:
+            # El error puede llegar aunque el commit haya entrado: se verifica
+            # antes de devolver el stock.
+            if not _quedo_registrada(db, venta["_id"]):
+                try:
+                    q15_descontar_stock.devolver_lotes(get_redis(), descontado)
+                except Exception as e_redis:
+                    raise CompensacionFallida(
+                        f"La venta {venta['_id']} no se registró pero su stock quedó descontado. "
+                        f"Reponer a mano: {descontado}") from e_redis
+                if _es_choque(e):
+                    raise _Reintentar() from e
+                raise
 
-    # TODO [SÁB 14 · compensación] 11: revisar qué se devuelve (hoy: la venta registrada).
-    return venta
+    venta["stock_descontado"] = True  # q15 la marcó dentro de la transacción
+    return {
+        "ok": True,
+        "mensaje": f"venta {venta['_id']} registrada",
+        "venta": venta,
+        "receta": {**receta, **cambios} if receta is not None else None,
+        "lotes_descontados": descontado,
+    }
+
+
+def registrar(datos):
+    """Registra la venta o lanza VentaRechazada. Ver el docstring del módulo."""
+    for intento in range(REINTENTOS):
+        # se revalida en cada intento: lo que chocó pudo haber cambiado la receta
+        contexto = _validar(datos)
+        try:
+            return _registrar(datos, contexto)
+        except _Reintentar:
+            # espera corta y al azar para que las que chocaron no vuelvan a chocar
+            time.sleep(random.uniform(0, 0.02 * (intento + 1)))
+    raise VentaRechazada("No se pudo registrar por operaciones concurrentes, reintentar")
+
+
+USO = "uso: q14 '<json con id_cliente, id_farmaceutico, medio_pago, items y (opcional) id_receta>'"
+
+
+def ejecutar(datos=None):
+    try:
+        if isinstance(datos, str):
+            try:
+                datos = json.loads(datos)
+            except json.JSONDecodeError as e:
+                raise VentaRechazada(f"JSON inválido: {e.msg}")
+        if datos is None:
+            raise VentaRechazada(USO)
+        return registrar(datos)
+    except VentaRechazada as e:
+        return {"ok": False, "error": str(e)}

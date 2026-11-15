@@ -7,18 +7,33 @@ FEFO y omitiendo lotes vencidos. Si el stock vigente no alcanza para algún
 Motores: Redis (stock, con un script Lua atómico) + MongoDB (leer la venta, el
 farmacéutico y marcar la venta como descontada).
 
-Parámetros:
-    id_venta (str): venta cuyo stock se descuenta.
-    session: sesión de Mongo si se llama desde la transacción de q14 (opcional).
-Retorna: dict con id_venta, id_sucursal y descontado: [{"lote", "unidades"}, ...]
-         (esa lista permite compensar en q14 si falla el commit).
-Errores: VentaInvalida (no existe, no es Completada o ya tiene el stock
-         descontado) y StockInsuficiente (algún ítem no alcanza; no se tocó nada).
+    descontar(id_venta, session=None)
+        id_venta: venta cuyo stock se descuenta. La sucursal es la del
+        farmacéutico que la registró.
+        session: sesión de Mongo; solo la pasa q14 al llamar desde su
+        transacción (ahí la venta todavía no está commiteada y solo se ve con
+        la misma sesión).
+        - la venta tiene que existir, ser 'Completada' (las Pendiente y Anulada
+          no descuentan stock) y no tener ya el stock descontado
+        - un lote que vence hoy todavía se puede dispensar; vencido = antes de hoy
+        - al descontar se actualizan el HASH del lote y lotes:unidades
+        - la venta queda marcada con stock_descontado = True, así no se puede
+          descontar dos veces
+        Lanza VentaInvalida o StockInsuficiente (sin haber tocado ningún lote).
+
+Desde la terminal:
+    python main.py q15 V011
+
+Retorna: dict con ok=True, un mensaje, id_venta, id_sucursal y
+descontado: [{"lote", "unidades"}, ...] en el orden en que se consumieron
+(esa lista le permite a q14 compensar si falla su commit). Si se rechaza,
+ejecutar (la entrada de la terminal) devuelve {"ok": False, "error": motivo}.
 """
 import json
 
 from farmared import fechas
 from farmared.db import get_db, get_redis
+
 
 class VentaInvalida(Exception):
     """La venta no existe, no es 'Completada' o ya se le descontó el stock."""
@@ -40,7 +55,7 @@ class StockInsuficiente(Exception):
 #
 # KEYS[i]    = stock:{suc}:{prod}  (un producto por clave, SIN repetidos: si
 #              llegara la misma clave dos veces, se planificaría dos veces el
-#              mismo lote; por eso ejecutar() agrupa los ítems por producto)
+#              mismo lote; por eso descontar_lotes() agrupa los ítems por producto)
 # ARGV[1]    = score de hoy (AAAAMMDD); ARGV[i+1] = cantidad pedida de KEYS[i]
 # Devuelve un JSON: {"ok": false, "clave": ..., "faltan": n}
 #               o   {"ok": true, "descontado": [{"lote": ..., "unidades": n}, ...]}
@@ -88,8 +103,9 @@ def descontar_lotes(r, id_sucursal, items):
     script = r.register_script(SCRIPT_DESCONTAR)
     respuesta = json.loads(script(keys=keys, args=args))
     if not respuesta["ok"]:
+        id_producto = respuesta["clave"].split(":")[-1]
         raise StockInsuficiente(
-            f"Stock insuficiente en {respuesta['clave']}: faltan {respuesta['faltan']} unidades vigentes")
+            f"Stock insuficiente de {id_producto} en {id_sucursal}: faltan {respuesta['faltan']} unidades vigentes")
     return respuesta["descontado"]
 
 
@@ -118,10 +134,12 @@ def _leer_venta_y_sucursal(id_venta, session=None):
     if venta.get("stock_descontado"):
         raise VentaInvalida(f"La venta {id_venta} ya tiene el stock descontado")
     farmaceutico = db.farmaceuticos.find_one({"_id": venta["id_farmaceutico"]}, session=session)
+    if farmaceutico is None:
+        raise VentaInvalida(f"La venta {id_venta} referencia a un farmacéutico que no existe ({venta['id_farmaceutico']})")
     return venta, farmaceutico["id_sucursal"]
 
 
-def ejecutar(id_venta, session=None):
+def descontar(id_venta, session=None):
     r = get_redis()
     db = get_db()
 
@@ -146,4 +164,14 @@ def ejecutar(id_venta, session=None):
         devolver_lotes(r, descontado)
         raise VentaInvalida(f"La venta {id_venta} ya tiene el stock descontado")
 
-    return {"id_venta": id_venta, "id_sucursal": id_sucursal, "descontado": descontado}
+    return {"ok": True, "mensaje": f"stock de {id_venta} descontado", "id_venta": id_venta,
+            "id_sucursal": id_sucursal, "descontado": descontado}
+
+
+def ejecutar(id_venta=None):
+    try:
+        if not id_venta:
+            raise VentaInvalida("uso: q15 <id_venta>")
+        return descontar(id_venta)
+    except (VentaInvalida, StockInsuficiente) as e:
+        return {"ok": False, "error": str(e)}

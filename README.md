@@ -101,6 +101,33 @@ python main.py q08 30     # argumentos opcionales
 
 Cada consulta está en su propio módulo en `farmared/consultas/qXX_*.py`, con un docstring que explica qué hace, parámetros, qué devuelve y qué motor usa.
 
+### Registrar una venta (q14) y descontar su stock (q15)
+
+```bash
+# venta con receta: descuenta del lote que vence antes y completa la receta RC015
+python main.py q14 '{"id_cliente": "C009", "id_farmaceutico": "F019", "medio_pago": "Obra social", "id_receta": "RC015", "items": [{"id_producto": "PRD003", "cantidad": 1}]}'
+
+# venta libre: saltea el lote vencido (L020) y consume primero el que vence antes (L019, después L004)
+python main.py q14 '{"id_cliente": "C009", "id_farmaceutico": "F019", "medio_pago": "Efectivo", "items": [{"id_producto": "PRD002", "cantidad": 10}]}'
+
+# rechazo por stock: no queda venta, la receta no cambia y no se toca ningún lote
+python main.py q14 '{"id_cliente": "C009", "id_farmaceutico": "F019", "medio_pago": "Efectivo", "items": [{"id_producto": "PRD002", "cantidad": 120}]}'
+
+# q15 sobre una venta ya descontada: se rechaza, no descuenta dos veces
+python main.py q15 V017
+```
+
+Los precios y el total no se mandan: salen del catálogo. Si la venta se rechaza, la salida es `{"ok": false, "error": "<motivo>"}` y no queda nada escrito.
+
+q14 y q15 funcionan integrados aunque Mongo y Redis no comparten transacción:
+
+1. q14 valida todo con lecturas (cliente, farmacéutico y sucursal, productos, receta).
+2. Abre una transacción de Mongo: inserta la venta y actualiza la receta.
+3. Dentro de la transacción llama a q15, que descuenta el stock en Redis con un script Lua. El script primero verifica que alcance para todos los ítems y recién después descuenta, todo en un solo paso atómico. Si no alcanza, no escribió nada: q14 aborta la transacción y no queda ni la venta ni el cambio en la receta.
+4. Commit. Si falla después de que Redis ya descontó, q14 devuelve a cada lote lo que q15 informó (compensación).
+
+Redis va último porque es lo único que la transacción de Mongo no puede deshacer. Cada venta guarda `stock_descontado` para que q15 no la descuente dos veces; las Completadas de los CSV se cargan con el flag en `true` porque ese stock ya es el actual, así que q15 sola solo aplica a una venta Completada que haya quedado sin descontar.
+
 ## Tests
 
 ```bash
@@ -108,7 +135,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-GitHub Actions corre esa misma suite en cada push y cada pull request. El workflow levanta un Mongo 7 y lo pasa por `MONGO_URI`, así q03, q05 y q13 también corren ahí.
+GitHub Actions corre esa misma suite en cada push y cada pull request. El workflow levanta un Mongo 7 (lo pasa por `MONGO_URI`) y un Redis 7, así q03, q05, q13 y q15 también corren ahí.
 
 La mayoría corre en memoria y no necesita Mongo ni Redis instalados. q03, q05 y q13 sí corren sobre un Mongo real: q03 y q05 porque usan `$unionWith` y un `$lookup` con subpipeline, y q13 para probar el `$jsonSchema` y el índice único de `dni`. Para eso el test busca un servidor en este orden:
 
@@ -117,6 +144,13 @@ La mayoría corre en memoria y no necesita Mongo ni Redis instalados. q03, q05 y
 3. Si no hay ninguno, levanta uno para la corrida: el binario `mongod`, o un contenedor `mongo:7`.
 
 Usa una base aparte, `farmared_test`, y la borra al terminar cada test. Las otras bases del servidor no se tocan. Si el Mongo lo arrancó la corrida, también lo apaga al final.
+
+q14 y q15 se prueban contra servicios reales, porque el script Lua y las transacciones no existen en memoria:
+
+- q15 necesita un Redis (`REDIS_HOST`/`REDIS_PORT`, por defecto `localhost:6379`). Usa la base 15 y la vacía en cada test; el stock cargado está en la base 0 y no se toca.
+- La integración de q14 necesita además un Mongo con replica set (el del Codespace lo es). Usa la base `farmared_test_q14` con los validadores reales. Incluye ventas simultáneas, la falla del commit con su compensación y dos ventas compitiendo por la misma receta.
+
+Si falta alguno de los dos servicios esos tests se saltean, no fallan. El Mongo de GitHub Actions no es replica set, así que la integración de q14 corre en el Codespace y no en el workflow.
 
 ## Estructura del repo
 
@@ -134,7 +168,7 @@ farmared/
   carga.py            script de carga
   consultas/          una consulta/servicio por archivo (q01 ... q15)
 main.py               CLI para correr las consultas
-tests/                tests en memoria y, en integracion/, q03, q05 y q13 contra Mongo
+tests/                tests en memoria y, en integracion/, q03, q05, q13, q14 y q15 contra Mongo y Redis
 ```
 
 ## Notas
