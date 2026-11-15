@@ -1,4 +1,4 @@
-"""Mongo real para q03 y q05.
+"""Mongo real para los tests de integración (q03, q05 y q13).
 
 Usa, en este orden, el Mongo que ya esté disponible:
 

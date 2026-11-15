@@ -21,7 +21,7 @@ Mongo corre como replica set de un nodo (`rs0`) porque si no, no permite transac
 ### Estructura en Redis
 
 ```
-lote:{id_lote}                      HASH  id_producto, id_sucursal, nro_lote, unidades, vencimiento
+lote:{id_lote}                      HASH  id_lote, id_producto, id_sucursal, nro_lote, unidades, vencimiento
 stock:{id_sucursal}:{id_producto}   ZSET  id_lote -> vencimiento (AAAAMMDD)
 lotes:unidades                      ZSET  id_lote -> unidades
 cache:q01:productos_activos         STRING (JSON, TTL 10 min)
@@ -43,7 +43,7 @@ python main.py cargar
 
 ### Local (sin Codespaces)
 
-Requiere Docker y Python 3.10+.
+Requiere Docker y Python 3.12.
 
 ```bash
 docker compose -f .devcontainer/docker-compose.yml up -d mongo redis
@@ -83,7 +83,7 @@ python main.py q08 30     # argumentos opcionales
 
 | # | Comando | Descripción | Motor |
 |---|---|---|---|
-| 1 | `python main.py q01` | Productos activos con datos del proveedor | Mongo + cache Redis |
+| 1 | `python main.py q01 [usar_cache]` | Productos activos con datos del proveedor | Mongo + cache Redis |
 | 2 | `python main.py q02` | Ventas pendientes con farmacéutico y total | Mongo |
 | 3 | `python main.py q03 <id_cliente>` | Historial completo de un cliente | Mongo |
 | 4 | `python main.py q04` | Clientes con más de una receta | Mongo |
@@ -95,6 +95,7 @@ python main.py q08 30     # argumentos opcionales
 | 10 | `python main.py q10 <id_sucursal> [contar_repetidos]` | Clientes atendidos en una sucursal | Mongo |
 | 11 | `python main.py q11` | Ingresos por farmacéutico en el mes actual | Mongo |
 | 12 | `python main.py q12 [considerar_anuladas]` | Clientes sin ventas en el último año | Mongo |
+| 13 | `python main.py q13 alta '<json>'`<br>`python main.py q13 modificar <id_cliente> '<json>'`<br>`python main.py q13 baja <id_cliente>` | ABM de clientes (alta validada, modificación de contacto y cobertura, baja lógica) | Mongo |
 
 Cada consulta está en su propio módulo en `farmared/consultas/qXX_*.py`, con un docstring que explica qué hace, parámetros, qué devuelve y qué motor usa.
 
@@ -105,9 +106,9 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-GitHub Actions corre esa misma suite en cada push y cada pull request. El workflow levanta un Mongo 7 y lo pasa por `MONGO_URI`, así q03 y q05 también corren ahí.
+GitHub Actions corre esa misma suite en cada push y cada pull request. El workflow levanta un Mongo 7 y lo pasa por `MONGO_URI`, así q03, q05 y q13 también corren ahí.
 
-La mayoría corre en memoria y no necesita Mongo ni Redis instalados. q03 y q05 sí corren sobre un Mongo real, porque usan `$unionWith` y un `$lookup` con subpipeline. Para eso el test busca un servidor en este orden:
+La mayoría corre en memoria y no necesita Mongo ni Redis instalados. q03, q05 y q13 sí corren sobre un Mongo real: q03 y q05 porque usan `$unionWith` y un `$lookup` con subpipeline, y q13 para probar el `$jsonSchema` y el índice único de `dni`. Para eso el test busca un servidor en este orden:
 
 1. `MONGO_URI`, si está definida (en el Codespace ya apunta al Mongo del compose).
 2. `localhost:27017`.
@@ -126,11 +127,12 @@ farmared/
   config.py           variables de entorno
   db.py               conexiones
   fechas.py           helpers de fechas (hoy, scores de vencimiento)
+  argumentos.py       convierte los argumentos que llegan como texto (true/false)
   esquema_mongo.py    validadores e índices de cada colección
   carga.py            script de carga
   consultas/          una consulta/servicio por archivo (q01 ... q15)
 main.py               CLI para correr las consultas
-tests/                tests en memoria y, en integracion/, q03 y q05 contra Mongo
+tests/                tests en memoria y, en integracion/, q03, q05 y q13 contra Mongo
 ```
 
 ## Notas

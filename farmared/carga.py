@@ -160,7 +160,7 @@ def cargar_stock_redis(r, lotes):
     """
     Estructura del stock en Redis:
 
-      lote:{id_lote}                      HASH  id_producto, id_sucursal, nro_lote, unidades, vencimiento
+      lote:{id_lote}                      HASH  id_lote, id_producto, id_sucursal, nro_lote, unidades, vencimiento
       stock:{id_sucursal}:{id_producto}   ZSET  miembro = id_lote, score = vencimiento (AAAAMMDD)
       lotes:unidades                      ZSET  miembro = id_lote, score = unidades
 
