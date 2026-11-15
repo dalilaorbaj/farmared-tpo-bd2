@@ -15,13 +15,9 @@ está en el catálogo, aparece con nombre null. Con solo_activos=True el filtro
 se aplica antes del límite, así el top 5 se arma solo entre productos con
 activo=True. Un producto sin ficha no cuenta como activo.
 
-La consigna no exige este argumento. El default False es el resultado que
-pide el enunciado. Desde la CLI llega como texto, igual que el resto de los
-argumentos.
-
 Parámetros:
     solo_activos (bool): si es True, el top 5 sale solo del catálogo activo.
-    Por defecto False. Acepta True/False y los textos true, false, 1, 0, si y no.
+    Por defecto False, que es lo que pide el enunciado.
 Retorna: lista de hasta 5 dict con id_producto, nombre y unidades, ordenada
 por unidades descendente.
 """
@@ -57,7 +53,7 @@ def _pipeline(solo_activos):
         ]
     else:
         etapas += [
-            # el id desempató: con las mismas unidades, el id menor entra al top 5
+            # el id desempata: con las mismas unidades, el id menor entra al top 5
             {"$sort": {"unidades": -1, "_id": 1}},
             {"$limit": 5},
             lookup,

@@ -7,24 +7,21 @@ Se parte de los farmacéuticos de esa sucursal (el índice es id_sucursal, sin
 filtrar activo) y cada uno busca sus ventas con el índice (id_farmaceutico,
 fecha). El cliente se resuelve con un $lookup por _id.
 
-Criterio: cuentan COMPLETADA, PENDIENTE y ANULADA; el cliente fue atendido, independientemente de si
-luego la venta fue anulada. El enunciado no excluye
-anuladas, y el vínculo es "el farmacéutico que registró la venta": la venta
-existe en los tres estados. Entran también el farmacéutico inactivo, la sucursal dada de baja y el
-cliente dado de baja. La sucursal es la ACTUAL del
-farmacéutico, que es la única que el modelo implementado guarda.
+Criterio: cuentan las ventas Completada, Pendiente y Anulada, porque el
+cliente fue atendido aunque después la venta se anule. Entran también el
+farmacéutico inactivo, la sucursal dada de baja y el cliente dado de baja.
+La sucursal es la actual del farmacéutico, que es la única que guarda el
+modelo.
 
 Por defecto cada cliente aparece una sola vez, aunque tenga varias ventas o
 lo hayan atendido varios farmacéuticos de la sucursal. Con
 contar_repetidos=True hay una fila por venta: la misma persona se repite
 tantas veces como la atendieron, y cada fila trae la venta que la cuenta.
-La consigna pide clientes distintos; el default False es ese resultado.
-Desde la CLI el booleano llega como texto, igual que en q07.
 
 Parámetros:
     id_sucursal (str): obligatorio, por ejemplo "S001".
     contar_repetidos (bool): si es True, una fila por venta. Por defecto
-    False. Acepta True/False y los textos true, false, 1, 0, si y no.
+    False (clientes distintos, como pide el enunciado).
 Retorna: dict con "sucursal" y "clientes". {"error": ...} si falta el id o
 la sucursal no existe, para no confundirlo con una sucursal sin clientes.
 Con contar_repetidos=False cada cliente tiene id_cliente, nombre, apellido,

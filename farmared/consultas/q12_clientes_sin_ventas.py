@@ -7,22 +7,15 @@ compraron no aparecerían. El $lookup une por id_cliente, el prefijo del
 año; si considerar_anuladas es False, también saca las Anulada. Quedan los
 que tienen esa lista vacía.
 
-Criterio: el último año es [hoy - 365 días, hoy], inclusive. Por defecto
-una venta cuenta en cualquier estado: Completada, Pendiente o Anulada. El
-enunciado dice "ventas registradas" y no excluye anuladas. Con considerar_anuladas=True, una anulada dentro del año alcanza
-para sacar al cliente: C004 queda afuera por V031 (2026-10-26, Anulada)
-aunque su única Completada sea de 2025-09-18. Con False, las anuladas se
-ignoran y C004 entra. Pendiente y Completada siguen contando en los dos
-modos. Entra un cliente dado de baja. Entra tanto el que nunca compró como
-el que sí compró, pero hace más de 365 días.
-
-La consigna no exige este argumento. El default True es el resultado de
-"ventas registradas". Desde la CLI llega como texto, igual que en q07.
+Criterio: cuentan las ventas desde hoy - 365 días (inclusive). El enunciado
+habla de "ventas registradas", así que por defecto (True) una venta cuenta
+en cualquier estado y una Anulada del último año alcanza para excluir al
+cliente; con False las anuladas se ignoran. Entran los clientes dados de
+baja, los que nunca compraron y los que compraron hace más de un año.
 
 Parámetros:
     considerar_anuladas (bool): si es False, una Anulada no cuenta como venta
-    del año. Por defecto True. Acepta True/False y los textos true, false,
-    1, 0, si y no.
+    del año. Por defecto True.
 Retorna: lista de dict con id_cliente, nombre, apellido, dni y activo,
 ordenada por id_cliente. Depende de la fecha del sistema (fechas.hoy()).
 """

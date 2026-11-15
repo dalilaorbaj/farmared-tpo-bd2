@@ -13,7 +13,8 @@ Las recetas con proxima_dispensa null no entran porque no tienen fecha.
 
 Parámetros: ninguno. Depende de la fecha del sistema (fechas.hoy()).
 Retorna: lista de dict con id_receta, fecha_emision, proxima_dispensa,
-dispensas y cliente, ordenada por proxima_dispensa ascendente.
+dispensas_autorizadas, dispensas_realizadas y cliente, ordenada por
+proxima_dispensa ascendente.
 """
 from farmared import fechas
 from farmared.db import get_db
