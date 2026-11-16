@@ -135,7 +135,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-GitHub Actions corre esa misma suite en cada push y cada pull request. El workflow levanta un Mongo 7 (lo pasa por `MONGO_URI`) y un Redis 7, así q03, q05, q13 y q15 también corren ahí.
+GitHub Actions corre esa misma suite en cada push y cada pull request. El workflow levanta un Mongo 7 como replica set (igual que el Codespace) y un Redis 7, así que también corren ahí los tests de integración, incluidos los de q14 con transacciones.
 
 La mayoría corre en memoria y no necesita Mongo ni Redis instalados. q03, q05 y q13 sí corren sobre un Mongo real: q03 y q05 porque usan `$unionWith` y un `$lookup` con subpipeline, y q13 para probar el `$jsonSchema` y el índice único de `dni`. Para eso el test busca un servidor en este orden:
 
@@ -150,7 +150,7 @@ q14 y q15 se prueban contra servicios reales, porque el script Lua y las transac
 - q15 necesita un Redis (`REDIS_HOST`/`REDIS_PORT`, por defecto `localhost:6379`). Usa la base 15 y la vacía en cada test; el stock cargado está en la base 0 y no se toca.
 - La integración de q14 necesita además un Mongo con replica set (el del Codespace lo es). Usa la base `farmared_test_q14` con los validadores reales. Incluye ventas simultáneas, la falla del commit con su compensación y dos ventas compitiendo por la misma receta.
 
-Si falta alguno de los dos servicios esos tests se saltean, no fallan. El Mongo de GitHub Actions no es replica set, así que la integración de q14 corre en el Codespace y no en el workflow.
+Si falta alguno de los dos servicios esos tests se saltean, no fallan.
 
 ## Estructura del repo
 
